@@ -479,14 +479,14 @@ gate evidence.
 | 1 | complete | `Sources/GatewaySDKKit/GatewaySDKError.swift` | `mise run build` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 2 | complete | `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLDocument.swift` | `mise run build` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 3 | complete | parser, limits, lexer; corrective parser surrogate decoder | `mise run build`; full corrective gate passed (185 tests) | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
-| 4 | in progress | parser and lexer tests; grammar/literal acceptance, exact construct and lexer positions, and depth/selection/root/container/node triples added | `swift test --filter GraphQLParserTests` and `mise run lint` passed; remaining acceptance matrices pending | acceptance matrix completion | none | `b34a198` |
+| 4 | complete | parser and lexer tests; supported grammar/literal forms, rejection and lexer positions, and document/token/depth/selection/root/container/node below-at-over boundaries | `swift test --filter GraphQLParserTests` and `mise run lint` passed | none | none | `b34a198` |
 | 5 | complete | validator; corrective nested-input, enum-literal, type-depth, current-request defaults, and request-scoped node accounting without rescanning supplied/literal values | `swift test --filter GraphQLValidatorTests` and `mise run lint` passed | none | none | `5f6267f`, `72f4032`, `b34a198`, `12b2496` |
-| 6 | in progress | validator tests; direct-AST duplicate/type-depth/default-scope/container, aggregate-budget, coercion/default/wrapper, path/message, and root-boundary coverage added | `swift test --filter GraphQLValidatorTests` and `mise run lint` passed; remaining accepted matrices pending | acceptance matrix completion | none | `b34a198`, `12b2496` |
+| 6 | complete | validator tests; all stable codes with code/path/message assertions, direct-AST duplicate/type-depth/default-scope/container, aggregate-budget, coercion/default/wrapper, and root-boundary matrices | `swift test --filter GraphQLValidatorTests` passed | none | none | `b34a198`, `12b2496`, `2d6a546` |
 | 7 | complete | runtime and projection; corrective private projection result and response paths | `mise run build`; full corrective gate passed | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
-| 8 | in progress | runtime fixture/tests and hostile catalog test; deterministic 7/8/9 barrier, result-order, argument recording, mixed authorization, error redaction/envelopes, hostile documents, and depth/node/container cases added | `swift test --filter GraphQLRuntimeTests` and `mise run lint` passed; remaining accepted matrices pending | acceptance matrix completion | none | `12b2496` |
+| 8 | complete | runtime fixture/tests and hostile catalog test; deterministic 7/8/9 barrier, document-order outcomes, arguments, authorization, aliases/nested projection, non-finite redaction/envelopes, hostile documents, and depth/node/container matrices | `swift test --filter GraphQLRuntimeTests` passed | none | none | `12b2496`, `2d6a546` |
 | 9 | complete | deleted inliner/renderer/tests; `SDLPrinterTests.swift`, `HostileCatalogTests.swift`, comments | `mise run build && mise run test`; stale-reference search passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 10 | complete | `README.md`, `AGENTS.md`, `Package.swift` | `mise run test` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
-| 11 | in progress | final-gate record | `mise run build && mise run test && mise run lint` passed (202 tests, SwiftLint 0); line audit maximum 480; stale-reference search, `git diff --check`, and `git diff --cached --check` passed; rerun after remaining matrices | Tasks 4/6/8 incomplete | none | pending |
+| 11 | complete | final-gate record | `arch -arm64 /bin/zsh -lc 'mise run build && mise run test && mise run lint'` passed (203 tests, SwiftLint 0); line audit maximum 480; stale-reference search, `git diff --check`, and `git diff --cached --check` passed | none | none | `2d6a546`, `67bddd5` |
 
 Self-review correction (2026-09-04): the initial Task 4, 6, and 8 completion entries
 were not supported by their four focused tests. `comm-001058` required revision before
@@ -509,13 +509,23 @@ counter still rescanned supplied and literal input after preflight. `b34a198` no
 passes only actually materialized catalog/input defaults to the second budget phase;
 the exact-at-limit supplied-JSON test proves a 10,000-node request is accepted once.
 The same commit expands parser acceptance/rejection and direct parser-resource tests.
-Tasks 4, 6, 8, and 11 deliberately remain in progress until every accepted matrix and
-the final gate are complete.
+
+Matrix completion (2026-09-04): `2d6a546` added stable-code path/message assertions,
+the positive validation counterpart, repeated aliases and nested list projection,
+mutation authorization denial, and non-finite resolver-result envelope coverage.
+Together with the earlier parser, validator, runtime, and hostile-input boundary
+fixtures, Tasks 4, 6, and 8 now cover the accepted matrices.
+
+Final gate (2026-09-04): after the matrix completion and SwiftLint formatting follow-up
+(`2d6a546`, `67bddd5`), `arch -arm64 /bin/zsh -lc 'mise run build && mise run test &&
+mise run lint'` passed with 203 tests and zero SwiftLint violations. The line audit's
+maximum is 480; the stale-inliner search is empty; and unstaged/cached diff checks
+passed. Task 11 is complete; the documentation handoff commit records this evidence.
 
 ## Completion criteria
 
-- Full gate green after the self-review correction; every Swift file < 1000 lines; git
-  clean on feat/graphql-runtime.
+- Full gate green after matrix completion; every Swift file < 1000 lines; git clean
+  on feat/graphql-runtime.
 - No occurrence of "inliner"/"GraphQLVariableInliner"/"GraphQLLiteralRenderer" outside
   design-docs history files.
 - All 12 validator codes + SYNTAX + CAPABILITY_DENIED + RESOLVER_SHAPE +
