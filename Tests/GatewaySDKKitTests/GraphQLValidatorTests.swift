@@ -20,6 +20,8 @@ struct GraphQLValidatorTests {
     let code: String
     let source: String
     let variables: [String: GatewayJSONValue]
+    let rootName: String
+    let expectedArguments: [String: GatewayJSONValue]
   }
 
   private let validator = GatewayGraphQLValidator(catalog: FixtureCatalogs.runtime)
@@ -59,22 +61,65 @@ struct GraphQLValidatorTests {
       message: "unknown variable"
     )
     let passing = [
-      PositiveCase(code: "UNKNOWN_FIELD", source: #"{ labels(accountId: "a") { name } }"#, variables: [:]),
-      PositiveCase(code: "UNKNOWN_ARGUMENT", source: #"{ labels(accountId: "a") { name } }"#, variables: [:]),
-      PositiveCase(code: "MISSING_ARGUMENT", source: #"{ labels(accountId: "a") { name } }"#, variables: [:]),
-      PositiveCase(code: "ARGUMENT_TYPE", source: #"{ labels(accountId: "a") { name } }"#, variables: [:]),
-      PositiveCase(code: "UNUSED_VARIABLE", source: "query($id: ID!) { labels(accountId: $id) { name } }", variables: ["id": .string("a")]),
-      PositiveCase(code: "UNDECLARED_VARIABLE", source: "query($id: ID!) { labels(accountId: $id) { name } }", variables: ["id": .string("a")]),
-      PositiveCase(code: "MISSING_VARIABLE", source: "query($id: ID!) { labels(accountId: $id) { name } }", variables: ["id": .string("a")]),
-      PositiveCase(code: "VARIABLE_TYPE", source: "query($id: ID!) { labels(accountId: $id) { name } }", variables: ["id": .string("a")]),
-      PositiveCase(code: "INVALID_SELECTION", source: #"{ labels(accountId: "a") { name } }"#, variables: [:]),
-      PositiveCase(code: "MULTIPLE_MUTATIONS", source: #"mutation { sendMessage(input: {accountId: "a", to: ["b"], body: "x"}) { messageId } }"#, variables: [:]),
-      PositiveCase(code: "DUPLICATE_ALIAS", source: #"{ first: labels(accountId: "a") { name } second: labels(accountId: "a") { name } }"#, variables: [:]),
-      PositiveCase(code: "UNKNOWN_VARIABLE", source: #"{ labels(accountId: "a") { name } }"#, variables: [:])
+      PositiveCase(
+        code: "UNKNOWN_FIELD", source: #"{ labels(accountId: "known-field") { id } }"#,
+        variables: [:], rootName: "labels", expectedArguments: ["accountId": .string("known-field")]
+      ),
+      PositiveCase(
+        code: "UNKNOWN_ARGUMENT", source: #"{ labels(accountId: "only-declared-argument") { name } }"#,
+        variables: [:], rootName: "labels", expectedArguments: ["accountId": .string("only-declared-argument")]
+      ),
+      PositiveCase(
+        code: "MISSING_ARGUMENT", source: #"{ threads(input: {accountId: "required-present"}) { totalCount } }"#,
+        variables: [:], rootName: "threads",
+        expectedArguments: ["input": .object(["accountId": .string("required-present"), "limit": .int(25)])]
+      ),
+      PositiveCase(
+        code: "ARGUMENT_TYPE", source: #"{ threads(input: {accountId: "typed", limit: 7}) { totalCount } }"#,
+        variables: [:], rootName: "threads", expectedArguments: ["input": .object(["accountId": .string("typed"), "limit": .int(7)])]
+      ),
+      PositiveCase(
+        code: "UNUSED_VARIABLE",
+        source: "query($usedByQuery: String) { threads(input: {accountId: \"used-variable\", query: $usedByQuery}) { totalCount } }",
+        variables: ["usedByQuery": .string("used")], rootName: "threads",
+        expectedArguments: ["input": .object(["accountId": .string("used-variable"), "query": .string("used"), "limit": .int(25)])]
+      ),
+      PositiveCase(
+        code: "UNDECLARED_VARIABLE", source: "query($declaredId: ID!) { labels(accountId: $declaredId) { name } }",
+        variables: ["declaredId": .string("declared")], rootName: "labels", expectedArguments: ["accountId": .string("declared")]
+      ),
+      PositiveCase(
+        code: "MISSING_VARIABLE", source: "query($requiredId: ID!) { labels(accountId: $requiredId) { name } }",
+        variables: ["requiredId": .string("provided")], rootName: "labels", expectedArguments: ["accountId": .string("provided")]
+      ),
+      PositiveCase(
+        code: "VARIABLE_TYPE", source: "query($compatibleId: ID!) { labels(accountId: $compatibleId) { name } }",
+        variables: ["compatibleId": .string("compatible")], rootName: "labels", expectedArguments: ["accountId": .string("compatible")]
+      ),
+      PositiveCase(
+        code: "INVALID_SELECTION", source: #"{ labels(accountId: "leaf") { name } }"#,
+        variables: [:], rootName: "labels", expectedArguments: ["accountId": .string("leaf")]
+      ),
+      PositiveCase(
+        code: "MULTIPLE_MUTATIONS",
+        source: #"mutation { sendMessage(input: {accountId: "one-mutation", to: ["b"], body: "x"}) { messageId } }"#,
+        variables: [:], rootName: "sendMessage",
+        expectedArguments: ["input": .object(["accountId": .string("one-mutation"), "to": .array([.string("b")]), "body": .string("x")])]
+      ),
+      PositiveCase(
+        code: "DUPLICATE_ALIAS", source: #"{ first: labels(accountId: "first") { name } second: labels(accountId: "second") { name } }"#,
+        variables: [:], rootName: "labels", expectedArguments: ["accountId": .string("first")]
+      ),
+      PositiveCase(
+        code: "UNKNOWN_VARIABLE", source: "query($knownSuppliedId: ID!) { labels(accountId: $knownSuppliedId) { name } }",
+        variables: ["knownSuppliedId": .string("known")], rootName: "labels", expectedArguments: ["accountId": .string("known")]
+      )
     ]
     for item in passing {
       let document = try GatewayGraphQLParser.parse(item.source)
-      #expect(try validator.validate(document, variables: item.variables).rootFields.count > 0, "expected passing counterpart for \(item.code)")
+      let validated = try validator.validate(document, variables: item.variables)
+      #expect(validated.rootFields.first?.name == item.rootName, "expected passing counterpart for \(item.code)")
+      #expect(validated.rootFields.first?.arguments == item.expectedArguments, "expected materialized counterpart for \(item.code)")
     }
   }
 
@@ -98,8 +143,9 @@ struct GraphQLValidatorTests {
       _ = try validator.validate(deep)
       Issue.record("expected RESOURCE_LIMIT")
     } catch let error as GatewaySDKError {
-      guard case .validation(let code, _, let path) = error else { Issue.record("expected validation error"); return }
+      guard case .validation(let code, let message, let path) = error else { Issue.record("expected validation error"); return }
       #expect(code == "RESOURCE_LIMIT")
+      #expect(message == GatewayGraphQLLimits.message("depth", GatewayGraphQLLimits.depth))
       #expect(path == [])
     }
     var catalog = FixtureCatalogs.runtime
@@ -133,7 +179,7 @@ struct GraphQLValidatorTests {
         if suppliedNodes > 9_999 {
           Issue.record("expected aggregate RESOURCE_LIMIT")
         } else {
-          #expect(validated.rootFields.count == 1)
+          #expect(validated.rootFields.first?.arguments == ["payload": .array(rows)])
         }
       } catch let error as GatewaySDKError {
         guard case .validation(let code, let message, let path) = error else {
@@ -142,7 +188,7 @@ struct GraphQLValidatorTests {
         }
         #expect(suppliedNodes > 9_999)
         #expect(code == "RESOURCE_LIMIT")
-        #expect(message.contains("inputValueNodes maximum 10000"))
+        #expect(message == GatewayGraphQLLimits.message("inputValueNodes", GatewayGraphQLLimits.inputValueNodes))
         #expect(path == [])
       }
     }
@@ -152,17 +198,19 @@ struct GraphQLValidatorTests {
   func directAndSuppliedInputBoundaries() throws {
     let local = GatewayGraphQLValidator(catalog: jsonCatalog())
     for count in [GatewayGraphQLLimits.containerEntries - 1, GatewayGraphQLLimits.containerEntries, GatewayGraphQLLimits.containerEntries + 1] {
+      let value = GatewayJSONValue.array(Array(repeating: .int(1), count: count))
       let document = inspectDocument(value: .list(Array(repeating: GraphQLValue.int(1), count: count)))
-      try expectInputBoundary(document, validator: local, over: count > GatewayGraphQLLimits.containerEntries, limit: "containerEntries", path: ["inspect"])
+      try expectInputBoundary(document, validator: local, expectedValue: value, over: count > GatewayGraphQLLimits.containerEntries, limit: "containerEntries", path: ["inspect"])
     }
     for nodes in [9_999, 10_000, 10_001] {
+      let value = GatewayJSONValue.array(jsonRows(nodes: nodes))
       let document = inspectDocument(value: literalRows(nodes: nodes))
-      try expectInputBoundary(document, validator: local, over: nodes > GatewayGraphQLLimits.inputValueNodes, limit: "inputValueNodes", path: ["inspect"])
+      try expectInputBoundary(document, validator: local, expectedValue: value, over: nodes > GatewayGraphQLLimits.inputValueNodes, limit: "inputValueNodes", path: ["inspect"])
     }
     for levels in [GatewayGraphQLLimits.depth - 2, GatewayGraphQLLimits.depth - 1, GatewayGraphQLLimits.depth] {
       var value: GraphQLValue = .int(1)
       for _ in 0..<levels { value = .list([value]) }
-      try expectInputBoundary(inspectDocument(value: value), validator: local, over: levels >= GatewayGraphQLLimits.depth, limit: "depth", path: ["inspect"])
+      try expectInputBoundary(inspectDocument(value: value), validator: local, expectedValue: nestedJSON(levels: levels), over: levels >= GatewayGraphQLLimits.depth, limit: "depth", path: ["inspect"])
     }
     let variables = try GatewayGraphQLParser.parse("query($payload: JSON) { inspect(payload: $payload) }")
     for levels in [GatewayGraphQLLimits.depth - 2, GatewayGraphQLLimits.depth - 1, GatewayGraphQLLimits.depth] {
@@ -172,6 +220,7 @@ struct GraphQLValidatorTests {
         variables,
         validator: local,
         variables: ["payload": value],
+        expectedValue: value,
         over: levels >= GatewayGraphQLLimits.depth,
         limit: "depth",
         path: []
@@ -182,6 +231,7 @@ struct GraphQLValidatorTests {
         variables,
         validator: local,
         variables: ["payload": .array(Array(repeating: .int(1), count: count))],
+        expectedValue: .array(Array(repeating: .int(1), count: count)),
         over: count > GatewayGraphQLLimits.containerEntries,
         limit: "containerEntries",
         path: []
@@ -192,6 +242,7 @@ struct GraphQLValidatorTests {
         variables,
         validator: local,
         variables: ["payload": .array(jsonRows(nodes: nodes))],
+        expectedValue: .array(jsonRows(nodes: nodes)),
         over: nodes > 9_999,
         limit: "inputValueNodes",
         path: []
@@ -253,18 +304,19 @@ struct GraphQLValidatorTests {
           Issue.record("expected root limit")
         } else {
           #expect(result.rootFields.count == count)
+          #expect(result.rootFields.allSatisfy { $0.arguments == ["accountId": .string("a")] })
         }
       } catch let error as GatewaySDKError {
         guard case .validation(let code, let message, let path) = error else { Issue.record("expected validation error"); continue }
         #expect(count > GatewayGraphQLLimits.rootFields)
         #expect(code == "RESOURCE_LIMIT")
-        #expect(message.contains("rootFields maximum 64"))
+        #expect(message == GatewayGraphQLLimits.message("rootFields", GatewayGraphQLLimits.rootFields))
         #expect(path == [])
       }
     }
   }
 
-  @Test("rejects direct-AST duplicates and input container overflow")
+  @Test("rejects direct-AST duplicates before any first-wins mapping")
   func directAstDefenses() throws {
     let selection = GatewayGraphQLDocument.Selection(
       name: "labels", arguments: [.init(name: "accountId", value: .string("a"))], selectionSet: [.init(name: "name")]
@@ -279,24 +331,6 @@ struct GraphQLValidatorTests {
       .init(name: "labels", arguments: [.init(name: "accountId", value: .string("a")), .init(name: "accountId", value: .string("b"))], selectionSet: [.init(name: "name")])
     ])
     try expectDirectCode("DUPLICATE_ARGUMENT", duplicateArgument, path: ["labels"])
-    for count in [GatewayGraphQLLimits.containerEntries - 1, GatewayGraphQLLimits.containerEntries, GatewayGraphQLLimits.containerEntries + 1] {
-      let argument = GatewayGraphQLDocument.Argument(name: "accountId", value: .list(Array(repeating: .string("a"), count: count)))
-      let document = GatewayGraphQLDocument(operationType: .query, selectionSet: [
-        .init(name: "labels", arguments: [argument], selectionSet: [.init(name: "name")])
-      ])
-      do {
-        _ = try validator.validate(document)
-        Issue.record("expected argument or resource result")
-      } catch let error as GatewaySDKError {
-        guard case .validation(let code, _, let path) = error else { Issue.record("expected validation error"); continue }
-        if count > GatewayGraphQLLimits.containerEntries {
-          #expect(code == "RESOURCE_LIMIT")
-          #expect(path == ["labels"])
-        } else {
-          #expect(code == "ARGUMENT_TYPE")
-        }
-      }
-    }
   }
 
   @Test("accepts and rejects every variable wrapper compatibility boundary")
@@ -334,24 +368,40 @@ struct GraphQLValidatorTests {
       let document = GatewayGraphQLDocument(operationType: .query, selectionSet: [
         .init(name: "labels", arguments: [.init(name: "accountId", value: .string("a"))], selectionSet: fields)
       ])
-      try expectBoundary(document, validator: validator, over: count > GatewayGraphQLLimits.selections, path: ["labels"])
+      try expectBoundary(
+        document,
+        validator: validator,
+        expectedSelectionCount: count - 1,
+        over: count > GatewayGraphQLLimits.selections,
+        path: ["labels", "n\(GatewayGraphQLLimits.selections - 1)"]
+      )
     }
-    for wrappers in [GatewayGraphQLLimits.depth - 1, GatewayGraphQLLimits.depth, GatewayGraphQLLimits.depth + 1] {
+    for wrappers in [GatewayGraphQLLimits.depth - 2, GatewayGraphQLLimits.depth - 1, GatewayGraphQLLimits.depth] {
       var type: GatewayTypeRef = .named("ID")
       for _ in 0..<wrappers { type = .list(type) }
+      var supplied: GatewayJSONValue = .string("a")
+      for _ in 0..<wrappers { supplied = .array([supplied]) }
+      var catalog = FixtureCatalogs.runtime
+      catalog.operations.append(.init(name: "typeDepth", kind: .query, tier: "reader", arguments: [.init(name: "payload", type: type)], result: .named("Label")))
+      let local = GatewayGraphQLValidator(catalog: catalog)
       let document = GatewayGraphQLDocument(
         operationType: .query,
         variableDefinitions: [.init(name: "v", type: type)],
-        selectionSet: [.init(name: "labels", arguments: [.init(name: "accountId", value: .string("a"))], selectionSet: [.init(name: "name")])]
+        selectionSet: [.init(name: "typeDepth", arguments: [.init(name: "payload", value: .variable("v"))], selectionSet: [.init(name: "name")])]
       )
       do {
-        _ = try validator.validate(document)
-        Issue.record("expected unused variable or resource limit")
+        let result = try local.validate(document, variables: ["v": supplied])
+        if wrappers >= GatewayGraphQLLimits.depth {
+          Issue.record("expected resource limit")
+        } else {
+          #expect(result.rootFields.first?.arguments == ["payload": supplied])
+        }
       } catch let error as GatewaySDKError {
-        guard case .validation(let code, _, let path) = error else { Issue.record("expected validation error"); continue }
-        if wrappers > GatewayGraphQLLimits.depth - 1 {
-          #expect(code == "RESOURCE_LIMIT"); #expect(path == [])
-        } else { #expect(code == "UNUSED_VARIABLE") }
+        guard case .validation(let code, let message, let path) = error else { Issue.record("expected validation error"); continue }
+        #expect(wrappers >= GatewayGraphQLLimits.depth)
+        #expect(code == "RESOURCE_LIMIT")
+        #expect(message == GatewayGraphQLLimits.message("depth", GatewayGraphQLLimits.depth))
+        #expect(path == [])
       }
     }
   }
@@ -398,18 +448,24 @@ struct GraphQLValidatorTests {
   private func expectBoundary(
     _ document: GatewayGraphQLDocument,
     validator: GatewayGraphQLValidator,
+    expectedSelectionCount: Int,
     over: Bool,
     path: [String]
   ) throws {
     do {
       let result = try validator.validate(document)
-      if over { Issue.record("expected resource limit") } else { #expect(result.rootFields.count == 1) }
+      if over {
+        Issue.record("expected resource limit")
+      } else {
+        #expect(result.rootFields.count == 1)
+        #expect(result.rootFields.first?.selectionSet.count == expectedSelectionCount)
+      }
     } catch let error as GatewaySDKError {
       guard case .validation(let code, let message, let actualPath) = error else { Issue.record("expected validation error"); return }
       #expect(over)
       #expect(code == "RESOURCE_LIMIT")
-      #expect(message.contains("selections maximum"))
-      #expect(actualPath.starts(with: path))
+      #expect(message == GatewayGraphQLLimits.message("selections", GatewayGraphQLLimits.selections))
+      #expect(actualPath == path)
     }
   }
 
@@ -417,6 +473,7 @@ struct GraphQLValidatorTests {
     _ document: GatewayGraphQLDocument,
     validator: GatewayGraphQLValidator,
     variables: [String: GatewayJSONValue] = [:],
+    expectedValue: GatewayJSONValue,
     over: Bool,
     limit: String,
     path expectedPath: [String]
@@ -427,7 +484,7 @@ struct GraphQLValidatorTests {
         Issue.record("expected input resource limit")
       } else {
         #expect(result.rootFields.count == 1)
-        #expect(result.rootFields[0].arguments["payload"] != nil)
+        #expect(result.rootFields.first?.arguments == ["payload": expectedValue])
       }
     } catch let error as GatewaySDKError {
       guard case .validation(let code, let message, let path) = error else {
@@ -436,7 +493,7 @@ struct GraphQLValidatorTests {
       }
       #expect(over)
       #expect(code == "RESOURCE_LIMIT")
-      #expect(message.contains("\(limit) maximum"))
+      #expect(message == limitMessage(limit))
       #expect(path == expectedPath)
     }
   }
@@ -513,6 +570,21 @@ struct GraphQLValidatorTests {
     if remaining > 0 { rows.append(.array(Array(repeating: .int(1), count: remaining))) }
     while rows.count < 1_000 { rows.append(.array([])) }
     return rows
+  }
+
+  private func nestedJSON(levels: Int) -> GatewayJSONValue {
+    var value: GatewayJSONValue = .int(1)
+    for _ in 0..<levels { value = .array([value]) }
+    return value
+  }
+
+  private func limitMessage(_ limit: String) -> String {
+    let maximums = [
+      "depth": GatewayGraphQLLimits.depth,
+      "containerEntries": GatewayGraphQLLimits.containerEntries,
+      "inputValueNodes": GatewayGraphQLLimits.inputValueNodes
+    ]
+    return GatewayGraphQLLimits.message(limit, maximums[limit] ?? 0)
   }
 
   private func literalRows(nodes: Int) -> GraphQLValue {
