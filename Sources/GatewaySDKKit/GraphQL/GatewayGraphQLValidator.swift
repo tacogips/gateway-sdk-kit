@@ -192,7 +192,11 @@ public struct GatewayGraphQLValidator: Sendable {
     switch value {
     case .int(let number): result = .int(Int(number))
     case .float(let number): result = .double(number)
-    case .string(let text): result = .string(text)
+    case .string(let text):
+      if case .enumeration = catalog.namedType(target.namedTypeName)?.kind {
+        throw error("ARGUMENT_TYPE", "string literal is not valid for enum \(target.namedTypeName)", path)
+      }
+      result = .string(text)
     case .bool(let flag): result = .bool(flag)
     case .null: result = .null
     case .enumValue(let text):
