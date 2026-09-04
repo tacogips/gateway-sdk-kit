@@ -16,6 +16,7 @@ struct GraphQLParserTests {
   @Test("rejects introspection with a positioned syntax error")
   func rejectsIntrospection() {
     expectSyntax("{ __typename }", message: "introspection is not supported", line: 1, column: 3)
+    expectSyntax("{ alias: __typename }", message: "introspection is not supported", line: 1, column: 10)
   }
 
   @Test("decodes escapes, surrogate pairs, comments, and block strings")
@@ -160,6 +161,8 @@ struct GraphQLParserTests {
       SyntaxCase(source: "\nquery($) { f }", message: "expected a variable name", line: 2, column: 7),
       SyntaxCase(source: "\n{ f(a: 1.) }", message: "expected digits after '.'", line: 2, column: 10),
       SyntaxCase(source: "\n{ f(a: 1e) }", message: "expected exponent digits", line: 2, column: 10),
+      SyntaxCase(source: "\n{ f(a: 01) }", message: "leading zeroes are not allowed", line: 2, column: 8),
+      SyntaxCase(source: "\n{ f(a: -01) }", message: "leading zeroes are not allowed", line: 2, column: 8),
       SyntaxCase(source: "\n{ f(a: \"unterminated) }", message: "unterminated string", line: 2, column: 8),
       SyntaxCase(source: "\n{ f(a: \"\"\"unterminated) }", message: "unterminated block string", line: 2, column: 8)
     ]

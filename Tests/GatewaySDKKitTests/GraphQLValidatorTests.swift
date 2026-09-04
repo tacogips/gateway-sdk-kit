@@ -305,6 +305,46 @@ struct GraphQLValidatorTests {
     #expect(throws: GatewaySDKError.self) { _ = try local.validate(invalidEnum) }
   }
 
+  @Test("preserves absent nullable list variables and uses first catalog arguments")
+  func absentListValuesAndDuplicateCatalogArguments() throws {
+    var catalog = FixtureCatalogs.runtime
+    catalog.operations.append(.init(
+      name: "listValues",
+      kind: .query,
+      tier: "reader",
+      arguments: [.init(name: "payload", type: .list(.named("Int")))],
+      result: .named("Label")
+    ))
+    catalog.operations.append(.init(
+      name: "requiredListValues",
+      kind: .query,
+      tier: "reader",
+      arguments: [.init(name: "payload", type: .list(.nonNull(.named("Int"))))],
+      result: .named("Label")
+    ))
+    catalog.operations.append(.init(
+      name: "duplicateArgument",
+      kind: .query,
+      tier: "reader",
+      arguments: [
+        .init(name: "value", type: .named("String"), defaultValue: .string("first")),
+        .init(name: "value", type: .nonNull(.named("Int")), defaultValue: .int(2))
+      ],
+      result: .named("Label")
+    ))
+    let local = GatewayGraphQLValidator(catalog: catalog)
+    let nullableList = try GatewayGraphQLParser.parse("query($missing: Int) { listValues(payload: [1, $missing, 2]) { name } }")
+    #expect(try local.validate(nullableList).rootFields.first?.arguments == ["payload": .array([.int(1), .null, .int(2)])])
+
+    let requiredList = try GatewayGraphQLParser.parse("query($missing: Int) { requiredListValues(payload: [1, $missing, 2]) { name } }")
+    try expectDocumentCode("VARIABLE_TYPE", requiredList, validator: local, path: ["requiredListValues"], message: "cannot feed")
+
+    let defaults = try GatewayGraphQLParser.parse("{ duplicateArgument { name } }")
+    #expect(try local.validate(defaults).rootFields.first?.arguments == ["value": .string("first")])
+    let supplied = try GatewayGraphQLParser.parse("query($value: String) { duplicateArgument(value: $value) { name } }")
+    #expect(try local.validate(supplied, variables: ["value": .string("provided")]).rootFields.first?.arguments == ["value": .string("provided")])
+  }
+
   @Test("reports validator paths and root/selection boundary triples")
   func pathsAndSelectionBoundaries() throws {
     let nested = try GatewayGraphQLParser.parse(#"{ threads(input: {accountId: "a"}) { edges { node(unused: 1) { id } } } }"#)
@@ -568,6 +608,27 @@ struct GraphQLValidatorTests {
   private func expectDocumentCode(
     _ expected: String,
     _ document: GatewayGraphQLDocument,
+    path: [String],
+    message: String
+  ) throws {
+    do {
+      _ = try validator.validate(document)
+      Issue.record("expected \(expected)")
+    } catch let error as GatewaySDKError {
+      guard case .validation(let code, let actualMessage, let actualPath) = error else {
+        Issue.record("expected validation error")
+        return
+      }
+      #expect(code == expected)
+      #expect(actualPath == path)
+      #expect(actualMessage.contains(message))
+    }
+  }
+
+  private func expectDocumentCode(
+    _ expected: String,
+    _ document: GatewayGraphQLDocument,
+    validator: GatewayGraphQLValidator,
     path: [String],
     message: String
   ) throws {

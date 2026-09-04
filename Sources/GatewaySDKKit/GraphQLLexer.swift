@@ -144,6 +144,9 @@ public enum GraphQLLexer {
     guard digitsStart < index else {
       throw syntax("expected digits", source: source, at: start)
     }
+    if source[digitsStart] == "0", index > source.index(after: digitsStart) {
+      throw syntax("leading zeroes are not allowed", source: source, at: start)
+    }
 
     var isFloat = false
     if index < source.endIndex, source[index] == "." {

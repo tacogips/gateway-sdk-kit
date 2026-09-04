@@ -191,8 +191,14 @@ private struct GraphQLDocumentParser {
     if initial.text.hasPrefix("__") { throw failure("introspection is not supported", at: initial) }
     var alias: String?
     var name = initial.text
-    if peek?.text == ":" { _ = try take(); alias = name; name = try take(kind: .name).text }
-    if name.hasPrefix("__") { throw failure("introspection is not supported", at: initial) }
+    var field = initial
+    if peek?.text == ":" {
+      _ = try take()
+      alias = name
+      field = try take(kind: .name)
+      name = field.text
+    }
+    if name.hasPrefix("__") { throw failure("introspection is not supported", at: field) }
     let arguments = peek?.text == "(" ? try arguments(depth: depth) : []
     if peek?.text == "@" { throw failure("directives are not supported", at: peek) }
     let nested = peek?.text == "{" ? try selectionSet(depth: depth, root: false) : []

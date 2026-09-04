@@ -42,13 +42,22 @@ let catalog = GatewaySchemaCatalog(
       ],
       result: .named("ThreadConnection"),
       summary: "List mail threads for an account."
+    ),
+    GatewayOperation(
+      name: "labels",
+      kind: .query,
+      tier: "reader",
+      arguments: [GatewayArgument(name: "accountId", type: .nonNull(.named("ID")), isRequired: true)],
+      result: .named("Label"),
+      summary: "List labels for an account."
     )
   ],
   types: [
     GatewayNamedType(
       name: "ThreadConnection",
       kind: .object([GatewayField(name: "totalCount", type: .nonNull(.named("Int")))])
-    )
+    ),
+    GatewayNamedType(name: "Label", kind: .object([GatewayField(name: "name", type: .named("String"))]))
   ]
 )
 ```
@@ -176,7 +185,8 @@ from ever being reported as an empty success.
 
 ```swift
 let resolvers: [String: GatewayGraphQLRuntime.Resolver] = [
-  "threads": { _, _ in .object(["totalCount": .int(1)]) }
+  "threads": { _, _ in .object(["totalCount": .int(1)]) },
+  "labels": { _, _ in .object(["name": .string("Inbox")]) }
 ]
 let runtime = try GatewayGraphQLRuntime(catalog: catalog, resolvers: resolvers)
 let envelope = await runtime.execute(

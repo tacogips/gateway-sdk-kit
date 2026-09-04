@@ -122,6 +122,30 @@ struct GraphQLRuntimeTests {
     ])
   }
 
+  @Test("preserves absent nullable list variables and rejects required elements before invocation")
+  func missingListVariables() async throws {
+    let nullableRecorder = CallRecorder()
+    let nullable = try listInputRuntime(recorder: nullableRecorder, requiredElements: false)
+    let accepted = await nullable.execute(
+      document: "query($missing: Int) { listValues(payload: [1, $missing, 2]) { name } }",
+      context: .init()
+    )
+    #expect(accepted.exitCode == 0)
+    #expect(await nullableRecorder.recordedArguments() == [["payload": .array([.int(1), .null, .int(2)])]])
+
+    let requiredRecorder = CallRecorder()
+    let required = try listInputRuntime(recorder: requiredRecorder, requiredElements: true)
+    let rejected = await required.execute(
+      document: "query($missing: Int) { listValues(payload: [1, $missing, 2]) { name } }",
+      context: .init()
+    )
+    #expect(rejected.exitCode == 2)
+    #expect(rejected.data == nil)
+    #expect(rejected.errors.map(\.code) == ["VARIABLE_TYPE"])
+    #expect(rejected.errors.first?.path == ["listValues"])
+    #expect(await requiredRecorder.snapshot().0 == 0)
+  }
+
   @Test("fails authorization before any resolver call")
   func deniesWithoutCall() async throws {
     let recorder = CallRecorder()
@@ -554,6 +578,27 @@ struct GraphQLRuntimeTests {
       await recorder.begin(field: "inspect", arguments: arguments)
       await recorder.end()
       return arguments["payload"] ?? .null
+    }])
+  }
+
+  private func listInputRuntime(recorder: CallRecorder, requiredElements: Bool) throws -> GatewayGraphQLRuntime {
+    let element: GatewayTypeRef = requiredElements ? .nonNull(.named("Int")) : .named("Int")
+    let catalog = GatewaySchemaCatalog(
+      provider: "test",
+      tier: "reader",
+      operations: [.init(
+        name: "listValues",
+        kind: .query,
+        tier: "reader",
+        arguments: [.init(name: "payload", type: .list(element))],
+        result: .named("Label")
+      )],
+      types: FixtureCatalogs.runtime.types
+    )
+    return try GatewayGraphQLRuntime(catalog: catalog, resolvers: ["listValues": { arguments, _ in
+      await recorder.begin(field: "listValues", arguments: arguments)
+      await recorder.end()
+      return .object(["name": .string("ok")])
     }])
   }
 

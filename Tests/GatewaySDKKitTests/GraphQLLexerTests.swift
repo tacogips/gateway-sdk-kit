@@ -93,7 +93,9 @@ struct GraphQLLexerTests {
       SyntaxCase(source: "{ f(a: $) }", message: "expected a variable name", line: 1, column: 8),
       SyntaxCase(source: "{ f(a: 1.) }", message: "expected digits after '.'", line: 1, column: 10),
       SyntaxCase(source: "{ f(a: 1e) }", message: "expected exponent digits", line: 1, column: 10),
-      SyntaxCase(source: "{ f(a: -) }", message: "expected digits", line: 1, column: 8)
+      SyntaxCase(source: "{ f(a: -) }", message: "expected digits", line: 1, column: 8),
+      SyntaxCase(source: "{ f(a: 01) }", message: "leading zeroes are not allowed", line: 1, column: 8),
+      SyntaxCase(source: "{ f(a: -01) }", message: "leading zeroes are not allowed", line: 1, column: 8)
     ]
     for item in cases { expectSyntax(item) }
   }
