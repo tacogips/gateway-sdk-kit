@@ -1,6 +1,6 @@
 # Implementation plan: bounded schema-search regex admission
 
-- Status: complete; adversarial-review correction committed and verified
+- Status: complete; archived after adversarial-review correction was committed and verified
 - Workflow mode: `issue-resolution`
 - Workflow execution: `codex-design-and-implement-review-loop-session-106`
 - Issue: `local:/Users/taco/gits/tacogips/gateway-sdk-kit-worktrees/runtime#Bound GatewaySDKKit schema-search regex evaluation`
