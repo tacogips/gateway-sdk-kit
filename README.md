@@ -92,6 +92,18 @@ object, inputObject, enumeration, scalar), then name. `includeReferencedTypes` a
 the argument types (transitively through input objects) and the result type plus one
 level of its fields, each labelled `referenced-by:<operation>`.
 
+Schema-search patterns use a deliberately conservative, portable regex subset. A
+pattern may be at most 256 UTF-8 bytes and may contain at most one unescaped optional
+quantifier (`?`). Literals, Unicode text, empty patterns, anchors, dot,
+character classes, unquantified capturing groups, ordinary escapes, and depth-zero
+alternation are supported. Use `^threads$|^sendMessage$` for alternatives; an escaped
+`\\|` or `|` inside a character class is a literal pipe. Grouped alternation,
+unbounded `*` or `+`, quantified groups, repeated or counted quantifiers, backreferences, and every `(?`
+extension (lookaround, options, non-capturing, or named groups) are excluded. Rejected
+policy patterns and malformed patterns use the stable `GatewaySDKError.invalidPattern`
+error. This fixed subset bounds shared SDK and CLI search work; it is not a general
+safety classification for Swift Regex.
+
 ### 3. Build a document or an argv array
 
 ```swift

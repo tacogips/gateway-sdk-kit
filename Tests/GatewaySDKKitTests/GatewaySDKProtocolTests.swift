@@ -146,6 +146,11 @@ struct GatewaySDKProtocolTests {
     #expect(throws: GatewaySDKError.self) {
       _ = try sdk.searchSchema("[")
     }
+    #expect {
+      _ = try sdk.searchSchema("(.+)+Z")
+    } throws: { error in
+      error as? GatewaySDKError == .invalidPattern("search pattern does not support unbounded quantifiers")
+    }
   }
 
   @Test("the one-argument conveniences honour a conformer's override")

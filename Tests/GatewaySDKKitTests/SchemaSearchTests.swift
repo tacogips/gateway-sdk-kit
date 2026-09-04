@@ -132,7 +132,7 @@ struct SchemaSearchTests {
   @Test("a type referenced by several operations gets one entry with merged sorted labels")
   func referencedByMerged() throws {
     let options = GatewaySchemaSearch.Options(kinds: [.query, .mutation], includeReferencedTypes: true)
-    let matches = try gmail.search("^(threads|sendMessage)$", options: options)
+    let matches = try gmail.search("^threads$|^sendMessage$", options: options)
     #expect(matches.map(\.name).prefix(2) == ["threads", "sendMessage"])
     let direction = try #require(matches.first { $0.name == "Direction" })
     #expect(direction.matchedOn == ["referenced-by:sendMessage", "referenced-by:threads"])
@@ -142,7 +142,7 @@ struct SchemaSearchTests {
   @Test("a referenced type that is already a direct match is not duplicated")
   func referencedTypesDeduplicatedAgainstDirectMatches() throws {
     let options = GatewaySchemaSearch.Options(includeReferencedTypes: true)
-    let matches = try gmail.search("^(sendMessage|SendMessageInput)$", options: options)
+    let matches = try gmail.search("^sendMessage$|^SendMessageInput$", options: options)
     #expect(matches.filter { $0.name == "SendMessageInput" }.count == 1)
     // It keeps its direct-match label rather than being replaced by a referenced-by entry.
     let input = try #require(matches.first { $0.name == "SendMessageInput" })
@@ -163,8 +163,122 @@ struct SchemaSearchTests {
 
   @Test("an invalid pattern throws invalidPattern")
   func invalidPattern() {
-    #expect(throws: GatewaySDKError.self) {
+    #expect {
       _ = try gmail.search("[")
+    } throws: { error in
+      error as? GatewaySDKError == .invalidPattern("search pattern syntax is incomplete")
+    }
+  }
+
+  @Test("the admission policy rejects bounded unsafe structures through public search")
+  func rejectedPatternStructures() {
+    let repeatedAlternation = String(repeating: "(a|aa)", count: 24) + "Z"
+    let exactly257UTF8 = String(repeating: "é", count: 128) + "a"
+    #expect(repeatedAlternation.utf8.count == 145)
+    #expect(exactly257UTF8.utf8.count == 257)
+
+    let cases: [(pattern: String, reason: String)] = [
+      ("(.+)+Z", "search pattern does not support unbounded quantifiers"),
+      (".*.*.*.*.*.*.*.*Z", "search pattern does not support unbounded quantifiers"),
+      ("(a|aa)", "search pattern does not support grouped alternation"),
+      ("((a|aa))", "search pattern does not support grouped alternation"),
+      (repeatedAlternation, "search pattern does not support grouped alternation"),
+      ("a**", "search pattern does not support unbounded quantifiers"),
+      ("a+?", "search pattern does not support unbounded quantifiers"),
+      ("a?+", "search pattern does not support unbounded quantifiers"),
+      ("a+b*", "search pattern does not support unbounded quantifiers"),
+      ("a+Z", "search pattern does not support unbounded quantifiers"),
+      (".*Z", "search pattern does not support unbounded quantifiers"),
+      ("a??", "search pattern allows at most one optional quantifier"),
+      ("(ab)?", "search pattern does not support quantified groups"),
+      ("a{1,3}", "search pattern does not support counted quantifiers"),
+      ("(a)\\1", "search pattern does not support backreferences"),
+      ("(a)\\9", "search pattern does not support backreferences"),
+      ("(a)\\k<a>", "search pattern does not support backreferences"),
+      ("(a)\\k'name'", "search pattern does not support backreferences"),
+      ("(a)\\g<a>", "search pattern does not support backreferences"),
+      ("(?=a)", "search pattern does not support extension groups"),
+      ("(?!a)", "search pattern does not support extension groups"),
+      ("(?<=a)", "search pattern does not support extension groups"),
+      ("(?i)a", "search pattern does not support extension groups"),
+      ("(?:a)", "search pattern does not support extension groups"),
+      ("(?<name>a)", "search pattern does not support extension groups"),
+      ("abc)", "search pattern has an unmatched closing delimiter"),
+      ("abc]", "search pattern has an unmatched closing delimiter"),
+      ("foo\\", "search pattern syntax is incomplete"),
+      ("[abc", "search pattern syntax is incomplete"),
+      ("(abc", "search pattern syntax is incomplete"),
+      (String(repeating: "a", count: 257), "search pattern exceeds 256 UTF-8 bytes"),
+      (exactly257UTF8, "search pattern exceeds 256 UTF-8 bytes")
+    ]
+
+    for testCase in cases {
+      #expect {
+        _ = try gmail.search(testCase.pattern)
+      } throws: { error in
+        error as? GatewaySDKError == .invalidPattern(testCase.reason)
+      }
+    }
+
+    let hostileCatalog = GatewaySchemaCatalog(
+      provider: "test",
+      tier: "reader",
+      operations: [
+        GatewayOperation(name: String(repeating: "a", count: 48), kind: .query, tier: "reader")
+      ],
+      types: []
+    )
+    #expect {
+      _ = try GatewaySchemaSearch(catalog: hostileCatalog).search(repeatedAlternation)
+    } throws: { error in
+      error as? GatewaySDKError == .invalidPattern("search pattern does not support grouped alternation")
+    }
+
+    let repetitiveCatalog = GatewaySchemaCatalog(
+      provider: "test",
+      tier: "reader",
+      operations: [
+        GatewayOperation(
+          name: "safe",
+          kind: .query,
+          tier: "reader",
+          summary: String(repeating: "a", count: 12_000)
+        )
+      ]
+    )
+    for pattern in ["a+Z", ".*Z"] {
+      #expect {
+        _ = try GatewaySchemaSearch(catalog: repetitiveCatalog).search(pattern)
+      } throws: { error in
+        error as? GatewaySDKError == .invalidPattern("search pattern does not support unbounded quantifiers")
+      }
+    }
+  }
+
+  @Test("the admission policy retains the documented safe subset")
+  func admittedPatternStructures() throws {
+    let exactly256ASCII = String(repeating: "a", count: 256)
+    let exactly256UTF8 = String(repeating: "é", count: 128)
+    #expect(exactly256ASCII.utf8.count == 256)
+    #expect(exactly256UTF8.utf8.count == 256)
+
+    let patterns = [
+      "", "thread", "スレッド", "^sendMessage$", ".", "[Dd]irection", "((thread))",
+      "^threads$|^sendMessage$", "thread?", "\\|", "[|]", "[\\]]", "[(){}*+?]", "\\\\1",
+      exactly256ASCII, exactly256UTF8
+    ]
+    for pattern in patterns {
+      _ = try gmail.search(pattern)
+    }
+  }
+
+  @Test("compiler failures after admission keep the stable invalid-pattern case")
+  func compilerFallback() {
+    #expect {
+      _ = try gmail.search("[z-a]")
+    } throws: { error in
+      guard case .invalidPattern = error as? GatewaySDKError else { return false }
+      return (error as? GatewaySDKError)?.description.hasPrefix("invalid search pattern:") == true
     }
   }
 

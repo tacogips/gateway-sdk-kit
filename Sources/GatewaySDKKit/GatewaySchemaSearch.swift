@@ -56,6 +56,8 @@ public struct GatewaySchemaSearch: Sendable {
   }
 
   public func search(_ pattern: String, options: Options = .init()) throws -> [Match] {
+    try GatewaySchemaSearchPattern.validate(pattern)
+
     let regex: Regex<AnyRegexOutput>
     do {
       regex = try Regex(pattern)
