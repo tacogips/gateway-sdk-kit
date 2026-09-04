@@ -486,7 +486,7 @@ gate evidence.
 | 8 | in progress | runtime fixture/tests and hostile catalog test; deterministic 7/8/9 barrier, result-order, argument recording, mixed authorization, error redaction/envelopes, hostile documents, and depth/node/container cases added | `swift test --filter GraphQLRuntimeTests` and `mise run lint` passed; remaining accepted matrices pending | acceptance matrix completion | none | `12b2496` |
 | 9 | complete | deleted inliner/renderer/tests; `SDLPrinterTests.swift`, `HostileCatalogTests.swift`, comments | `mise run build && mise run test`; stale-reference search passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 10 | complete | `README.md`, `AGENTS.md`, `Package.swift` | `mise run test` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
-| 11 | in progress | final-gate record | `mise run build && mise run test && mise run lint` passed (196 tests, SwiftLint 0); line audit maximum 480; stale-reference search, `git diff --check`, and `git diff --cached --check` passed; rerun after remaining matrices | Tasks 6/8 incomplete | none | pending |
+| 11 | in progress | final-gate record | `mise run build && mise run test && mise run lint` passed (202 tests, SwiftLint 0); line audit maximum 480; stale-reference search, `git diff --check`, and `git diff --cached --check` passed; rerun after remaining matrices | Tasks 4/6/8 incomplete | none | pending |
 
 Self-review correction (2026-09-04): the initial Task 4, 6, and 8 completion entries
 were not supported by their four focused tests. `comm-001058` required revision before
