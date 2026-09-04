@@ -205,6 +205,12 @@ struct GraphQLParserTests {
       line: 2,
       column: 10
     )
+    expectSyntax(
+      "{\r\n  f(a: \"x" + "\\" + "\t" + "y\")\r\n}",
+      message: "raw control character in string",
+      line: 2,
+      column: 11
+    )
   }
 
   @Test("accepts resource maxima and rejects the first over-limit token")

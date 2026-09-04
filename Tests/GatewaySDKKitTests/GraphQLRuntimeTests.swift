@@ -186,6 +186,19 @@ struct GraphQLRuntimeTests {
       code: "SYNTAX"
     )])
     #expect(await controlRecorder.snapshot().0 == 0)
+
+    let escapedControlRecorder = CallRecorder()
+    let escapedControl = await (try makeRuntime(recorder: escapedControlRecorder)).execute(
+      document: "{\r\n  labels(accountId: \"a" + "\\" + "\t\") { name }\r\n}",
+      context: .init()
+    )
+    #expect(escapedControl.exitCode == 2)
+    #expect(escapedControl.data == nil)
+    #expect(escapedControl.errors == [.init(
+      message: "syntax error at 2:24: raw control character in string",
+      code: "SYNTAX"
+    )])
+    #expect(await escapedControlRecorder.snapshot().0 == 0)
   }
 
   @Test("rejects recursive defaults and honors first duplicate input fields before invocation")

@@ -121,6 +121,9 @@ public enum GraphQLLexer {
       if character == "\\" {
         let next = source.index(after: cursor)
         guard next < source.endIndex else { break }
+        if isC0Control(source[next]) {
+          throw syntax("raw control character in string", source: source, at: next)
+        }
         cursor = source.index(after: next)
         continue
       }

@@ -122,6 +122,12 @@ struct GraphQLLexerTests {
         line: 1,
         column: 10
       ))
+      expectSyntax(.init(
+        source: "{ f(a: \"x" + "\\" + control + "y\") }",
+        message: "raw control character in string",
+        line: 1,
+        column: 11
+      ))
     }
   }
 
