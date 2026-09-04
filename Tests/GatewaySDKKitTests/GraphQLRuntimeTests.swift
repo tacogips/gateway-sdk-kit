@@ -104,13 +104,19 @@ struct GraphQLRuntimeTests {
     }
   }
 
-  @Test("reports resolver resource limits at the selected response path")
+  @Test("enforces resolver container boundaries at the selected response path")
   func reportsResourcePath() async throws {
-    let oversized = GatewayJSONValue.array((0...GatewayGraphQLLimits.containerEntries).map { _ in .object(["name": .string("x")]) })
-    let runtime = try makeRuntime(labels: { _, _ in oversized })
-    let envelope = await runtime.execute(document: #"{ visible: labels(accountId: "a") { name } }"#, context: .init())
-    #expect(envelope.errors.first?.code == "RESOLVER_SHAPE")
-    #expect(envelope.errors.first?.path == ["visible"])
+    for count in [GatewayGraphQLLimits.containerEntries - 1, GatewayGraphQLLimits.containerEntries, GatewayGraphQLLimits.containerEntries + 1] {
+      let result = GatewayJSONValue.array((0..<count).map { _ in .object(["name": .string("x")]) })
+      let runtime = try makeRuntime(labels: { _, _ in result })
+      let envelope = await runtime.execute(document: #"{ visible: labels(accountId: "a") { name } }"#, context: .init())
+      if count > GatewayGraphQLLimits.containerEntries {
+        #expect(envelope.errors.first?.code == "RESOLVER_SHAPE")
+        #expect(envelope.errors.first?.path == ["visible"])
+      } else {
+        #expect(envelope.exitCode == 0)
+      }
+    }
   }
 
   private func makeRuntime(
