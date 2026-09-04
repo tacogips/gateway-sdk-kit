@@ -76,6 +76,25 @@ struct GraphQLRuntimeTests {
     #expect(envelope.rawOutput.contains("\"requestId\":\"r1\""))
   }
 
+  @Test("projects aliases, repeated fields, and nested list selections")
+  func projectsThreadSelections() async throws {
+    let runtime = try makeRuntime(threads: { _, _ in
+      .object([
+        "totalCount": .int(1),
+        "edges": .array([.object(["node": .object(["id": .string("t1"), "subject": .string("hello")])])])
+      ])
+    })
+    let envelope = await runtime.execute(
+      document: #"{ first: threads(input: {accountId: "a"}) { totalCount edges { node { id subject } } } second: threads(input: {accountId: "a"}) { totalCount } }"#,
+      context: .init()
+    )
+    #expect(envelope.exitCode == 0)
+    #expect(envelope.data == .object([
+      "first": .object(["totalCount": .int(1), "edges": .array([.object(["node": .object(["id": .string("t1"), "subject": .string("hello")])])])]),
+      "second": .object(["totalCount": .int(1)])
+    ]))
+  }
+
   @Test("passes coerced literal and variable-default arguments to resolvers")
   func recordsCoercedArguments() async throws {
     let recorder = CallRecorder()
@@ -111,6 +130,15 @@ struct GraphQLRuntimeTests {
     #expect(await recorder.snapshot().0 == 0)
     #expect(runtime.printedSchema().contains("labels"))
     #expect(!runtime.printedSchema().contains("threads"))
+
+    let mutation = await runtime.execute(
+      document: #"mutation { sendMessage(input: {accountId: "a", to: ["b"], body: "x"}) { messageId } }"#,
+      context: .init()
+    )
+    #expect(mutation.exitCode == 1)
+    #expect(mutation.errors.first?.message.contains("sendMessage") == true)
+    #expect(mutation.errors.first?.message.contains("reader") == true)
+    #expect(await recorder.snapshot().0 == 0)
   }
 
   @Test("denies mixed authorization before calling any resolver")
@@ -158,6 +186,11 @@ struct GraphQLRuntimeTests {
     let nullResult = await nullRuntime.execute(document: #"{ labels(accountId: "a") { name } }"#, context: .init())
     #expect(nullResult.exitCode == 0)
     #expect(nullResult.data == .object(["labels": .null]))
+    let nonFiniteRuntime = try makeRuntime(labels: { _, _ in .array([.object(["name": .double(.nan)])]) })
+    let nonFinite = await nonFiniteRuntime.execute(document: #"{ labels(accountId: "a") { name } }"#, context: .init())
+    #expect(nonFinite.exitCode == 1)
+    #expect(nonFinite.data == .object(["labels": .null]))
+    #expect(nonFinite.errors.first?.code == "RESOLVER_SHAPE")
   }
 
   @Test("rejects invalid mutations before calling resolvers")

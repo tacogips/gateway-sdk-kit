@@ -3,6 +3,13 @@ import Testing
 
 @Suite("GraphQL validator")
 struct GraphQLValidatorTests {
+  private struct ValidationCase {
+    let code: String
+    let source: String
+    let path: [String]
+    let message: String
+  }
+
   private let validator = GatewayGraphQLValidator(catalog: FixtureCatalogs.runtime)
 
   @Test("coerces nested input variables and applies input defaults")
@@ -14,18 +21,22 @@ struct GraphQLValidatorTests {
 
   @Test("reports each stable validation code")
   func stableCodes() throws {
-    try expectCode("UNKNOWN_FIELD", "{ missing { id } }")
-    try expectCode("UNKNOWN_ARGUMENT", #"{ labels(accountId: "a", extra: 1) { name } }"#)
-    try expectCode("MISSING_ARGUMENT", "{ labels { name } }")
-    try expectCode("ARGUMENT_TYPE", "{ labels(accountId: 1) { name } }")
+    let cases = [
+      ValidationCase(code: "UNKNOWN_FIELD", source: "{ missing { id } }", path: ["missing"], message: "unknown root field"),
+      ValidationCase(code: "UNKNOWN_ARGUMENT", source: #"{ labels(accountId: "a", extra: 1) { name } }"#, path: ["labels"], message: "unknown argument"),
+      ValidationCase(code: "MISSING_ARGUMENT", source: "{ labels { name } }", path: ["labels"], message: "missing required argument"),
+      ValidationCase(code: "ARGUMENT_TYPE", source: "{ labels(accountId: 1) { name } }", path: ["labels"], message: "argument"),
+      ValidationCase(code: "UNUSED_VARIABLE", source: #"query($id: ID) { labels(accountId: "a") { name } }"#, path: [], message: "is not used"),
+      ValidationCase(code: "UNDECLARED_VARIABLE", source: "{ labels(accountId: $id) { name } }", path: [], message: "is not declared"),
+      ValidationCase(code: "MISSING_VARIABLE", source: "query($id: ID!) { labels(accountId: $id) { name } }", path: [], message: "missing required variable"),
+      ValidationCase(code: "VARIABLE_TYPE", source: "query($id: Int) { labels(accountId: $id) { name } }", path: ["labels"], message: "variable"),
+      ValidationCase(code: "INVALID_SELECTION", source: #"{ labels(accountId: "a") { name { x } } }"#, path: ["labels", "name"], message: "leaf type"),
+      ValidationCase(code: "MULTIPLE_MUTATIONS", source: #"mutation { first: sendMessage(input: {accountId: "a", to: ["b"], body: "x"}) { messageId } second: sendMessage(input: {accountId: "a", to: ["b"], body: "x"}) { messageId } }"#, path: [], message: "one root field"),
+      ValidationCase(code: "DUPLICATE_ALIAS", source: #"{ x: labels(accountId: "a") { name } x: labels(accountId: "a") { name } }"#, path: ["x"], message: "duplicate response key")
+    ]
+    for item in cases { try expectCode(item) }
     try expectCode("UNKNOWN_VARIABLE", #"{ labels(accountId: "a") { name } }"#, variables: ["extra": .string("x")])
-    try expectCode("UNUSED_VARIABLE", #"query($id: ID) { labels(accountId: "a") { name } }"#)
-    try expectCode("UNDECLARED_VARIABLE", "{ labels(accountId: $id) { name } }")
-    try expectCode("MISSING_VARIABLE", "query($id: ID!) { labels(accountId: $id) { name } }")
-    try expectCode("VARIABLE_TYPE", "query($id: Int) { labels(accountId: $id) { name } }")
-    try expectCode("INVALID_SELECTION", #"{ labels(accountId: "a") { name { x } } }"#)
-    try expectCode("MULTIPLE_MUTATIONS", #"mutation { first: sendMessage(input: {accountId: "a", to: ["b"], body: "x"}) { messageId } second: sendMessage(input: {accountId: "a", to: ["b"], body: "x"}) { messageId } }"#)
-    try expectCode("DUPLICATE_ALIAS", #"{ x: labels(accountId: "a") { name } x: labels(accountId: "a") { name } }"#)
+    #expect(try validator.validate(GatewayGraphQLParser.parse(#"{ labels(accountId: "a") { name } }"#)).rootFields.count == 1)
   }
 
   @Test("validates enum and input object fields")
@@ -195,6 +206,19 @@ struct GraphQLValidatorTests {
           #expect(code == "ARGUMENT_TYPE")
         }
       }
+    }
+  }
+
+  private func expectCode(_ item: ValidationCase) throws {
+    let document = try GatewayGraphQLParser.parse(item.source)
+    do {
+      _ = try validator.validate(document)
+      Issue.record("expected \(item.code)")
+    } catch let error as GatewaySDKError {
+      guard case .validation(let actual, let message, let path) = error else { Issue.record("expected validation error"); return }
+      #expect(actual == item.code)
+      #expect(path == item.path)
+      #expect(message.localizedCaseInsensitiveContains(item.message))
     }
   }
 
