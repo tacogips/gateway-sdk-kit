@@ -128,8 +128,7 @@ struct GraphQLRuntimeTests {
     #expect(envelope.exitCode == 1)
     #expect(envelope.errors.first?.code == "CAPABILITY_DENIED")
     #expect(await recorder.snapshot().0 == 0)
-    #expect(runtime.printedSchema().contains("labels"))
-    #expect(!runtime.printedSchema().contains("threads"))
+    #expect(runtime.printedSchema() == authorized.sdl())
 
     let mutation = await runtime.execute(
       document: #"mutation { sendMessage(input: {accountId: "a", to: ["b"], body: "x"}) { messageId } }"#,
@@ -229,6 +228,7 @@ struct GraphQLRuntimeTests {
     #expect(roundTrip.data == envelope.data)
     #expect(roundTrip.errors == envelope.errors)
     #expect(roundTrip.requestId == envelope.requestId)
+    #expect(runtime.printedSchema() == FixtureCatalogs.runtime.sdl())
     let problems = GatewayGraphQLRuntime.check(catalog: FixtureCatalogs.runtime, resolvers: ["labels": { _, _ in .array([]) }, "extra": { _, _ in .null }])
     #expect(problems == ["missing resolver for root field 'sendMessage'", "missing resolver for root field 'threads'", "resolver 'extra' matches no catalog root field"])
     #expect(throws: GatewaySDKError.self) {
@@ -242,6 +242,7 @@ struct GraphQLRuntimeTests {
         "extra": { _, _ in .null }
       ])
     }
+    #expect(GatewayGraphQLRuntime.check(catalog: FixtureCatalogs.documents, resolvers: [:]).isEmpty)
   }
 
   @Test("uses the documented envelope codes for success syntax and validation")
@@ -334,6 +335,62 @@ struct GraphQLRuntimeTests {
     }
   }
 
+  @Test("enforces resolver depth, container, and node triples through envelopes")
+  func resolverResourceEnvelopeMatrix() async throws {
+    for levels in [GatewayGraphQLLimits.depth - 2, GatewayGraphQLLimits.depth - 1, GatewayGraphQLLimits.depth] {
+      var value: GatewayJSONValue = .int(1)
+      for _ in 0..<levels { value = .array([value]) }
+      let envelope = await (try jsonRuntime(value)).execute(document: "{ inspect }", context: .init())
+      if levels >= GatewayGraphQLLimits.depth {
+        #expect(envelope.exitCode == 1)
+        #expect(envelope.data == .object(["inspect": .null]))
+        #expect(envelope.errors.first?.code == "RESOLVER_SHAPE")
+      } else { #expect(envelope.exitCode == 0) }
+    }
+    for count in [GatewayGraphQLLimits.containerEntries - 1, GatewayGraphQLLimits.containerEntries, GatewayGraphQLLimits.containerEntries + 1] {
+      let envelope = await (try jsonRuntime(.array(Array(repeating: .int(1), count: count)))).execute(document: "{ inspect }", context: .init())
+      #expect(envelope.exitCode == (count > GatewayGraphQLLimits.containerEntries ? 1 : 0))
+      if count > GatewayGraphQLLimits.containerEntries { #expect(envelope.errors.first?.code == "RESOLVER_SHAPE") }
+    }
+    for finalCount in [988, 989, 990] {
+      let groups = Array(repeating: GatewayJSONValue.array(Array(repeating: .int(1), count: 1_000)), count: 9)
+        + [.array(Array(repeating: .int(1), count: finalCount))]
+      let envelope = await (try jsonRuntime(.array(groups))).execute(document: "{ inspect }", context: .init())
+      #expect(envelope.exitCode == (finalCount > 989 ? 1 : 0))
+      if finalCount > 989 { #expect(envelope.errors.first?.code == "RESOLVER_SHAPE") }
+    }
+  }
+
+  @Test("rejects document and supplied-input resource limits before resolver calls")
+  func requestResourceEnvelopeMatrix() async throws {
+    for bytes in [GatewayGraphQLLimits.documentBytes - 1, GatewayGraphQLLimits.documentBytes, GatewayGraphQLLimits.documentBytes + 1] {
+      let recorder = CallRecorder()
+      let envelope = await (try makeRuntime(recorder: recorder)).execute(document: paddedDocument(bytes), context: .init())
+      #expect(envelope.exitCode == (bytes > GatewayGraphQLLimits.documentBytes ? 2 : 0))
+      #expect(await recorder.snapshot().0 == (bytes > GatewayGraphQLLimits.documentBytes ? 0 : 1))
+    }
+    for nodes in [9_998, 9_999, 10_000] {
+      let recorder = CallRecorder()
+      let envelope = await (try jsonInputRuntime(recorder)).execute(
+        document: "query($payload: JSON) { inspect(payload: $payload) }",
+        variables: ["payload": .array(jsonRows(nodes: nodes))],
+        context: .init()
+      )
+      #expect(envelope.exitCode == (nodes > 9_999 ? 2 : 0))
+      #expect(await recorder.snapshot().0 == (nodes > 9_999 ? 0 : 1))
+      if nodes > 9_999 { #expect(envelope.errors.first?.code == "RESOURCE_LIMIT") }
+    }
+    for count in [GatewayGraphQLLimits.containerEntries - 1, GatewayGraphQLLimits.containerEntries, GatewayGraphQLLimits.containerEntries + 1] {
+      let recorder = CallRecorder()
+      let envelope = await (try jsonInputRuntime(recorder)).execute(
+        document: "query($payload: JSON) { inspect(payload: $payload) }",
+        variables: ["payload": .array(Array(repeating: .int(1), count: count))], context: .init()
+      )
+      #expect(envelope.exitCode == (count > GatewayGraphQLLimits.containerEntries ? 2 : 0))
+      #expect(await recorder.snapshot().0 == (count > GatewayGraphQLLimits.containerEntries ? 0 : 1))
+    }
+  }
+
   private func makeRuntime(
     recorder: CallRecorder? = nil,
     authorized: GatewaySchemaCatalog? = nil,
@@ -371,5 +428,40 @@ struct GraphQLRuntimeTests {
         "sendMessage": { _, _ in .object(["messageId": .string("m1"), "threadId": .string("t1")]) }
       ]
     )
+  }
+
+  private func jsonRuntime(_ value: GatewayJSONValue) throws -> GatewayGraphQLRuntime {
+    let catalog = GatewaySchemaCatalog(
+      provider: "test", tier: "reader",
+      operations: [.init(name: "inspect", kind: .query, tier: "reader", result: .named("JSON"))]
+    )
+    return try GatewayGraphQLRuntime(catalog: catalog, resolvers: ["inspect": { _, _ in value }])
+  }
+
+  private func jsonInputRuntime(_ recorder: CallRecorder) throws -> GatewayGraphQLRuntime {
+    let catalog = GatewaySchemaCatalog(
+      provider: "test", tier: "reader",
+      operations: [.init(name: "inspect", kind: .query, tier: "reader", arguments: [.init(name: "payload", type: .named("JSON"))], result: .named("JSON"))]
+    )
+    return try GatewayGraphQLRuntime(catalog: catalog, resolvers: ["inspect": { arguments, _ in
+      await recorder.begin(arguments: arguments)
+      await recorder.end()
+      return arguments["payload"] ?? .null
+    }])
+  }
+
+  private func paddedDocument(_ bytes: Int) -> String {
+    let prefix = #"{ labels(accountId: "a") { name } }#"#
+    return prefix + String(repeating: "x", count: max(0, bytes - prefix.utf8.count))
+  }
+
+  private func jsonRows(nodes: Int) -> [GatewayJSONValue] {
+    let leaves = nodes - 1_001
+    let fullRows = leaves / 9
+    let remaining = leaves % 9
+    var rows = Array(repeating: GatewayJSONValue.array(Array(repeating: .int(1), count: 9)), count: fullRows)
+    if remaining > 0 { rows.append(.array(Array(repeating: .int(1), count: remaining))) }
+    while rows.count < 1_000 { rows.append(.array([])) }
+    return rows
   }
 }

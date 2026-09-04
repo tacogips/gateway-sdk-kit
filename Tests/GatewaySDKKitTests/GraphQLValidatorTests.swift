@@ -10,6 +10,12 @@ struct GraphQLValidatorTests {
     let message: String
   }
 
+  private struct WrapperCase {
+    let type: GatewayTypeRef
+    let field: String
+    let passes: Bool
+  }
+
   private let validator = GatewayGraphQLValidator(catalog: FixtureCatalogs.runtime)
 
   @Test("coerces nested input variables and applies input defaults")
@@ -213,6 +219,63 @@ struct GraphQLValidatorTests {
     }
   }
 
+  @Test("accepts and rejects every variable wrapper compatibility boundary")
+  func variableWrapperMatrix() throws {
+    var catalog = FixtureCatalogs.runtime
+    catalog.operations.append(.init(name: "optional", kind: .query, tier: "reader", arguments: [.init(name: "value", type: .named("ID"))], result: .named("Label")))
+    catalog.operations.append(.init(name: "required", kind: .query, tier: "reader", arguments: [.init(name: "value", type: .nonNull(.named("ID")))], result: .named("Label")))
+    catalog.operations.append(.init(name: "list", kind: .query, tier: "reader", arguments: [.init(name: "value", type: .list(.named("ID")))], result: .named("Label")))
+    let local = GatewayGraphQLValidator(catalog: catalog)
+    let cases = [
+      WrapperCase(type: .nonNull(.named("ID")), field: "optional", passes: true),
+      WrapperCase(type: .named("ID"), field: "optional", passes: true),
+      WrapperCase(type: .named("ID"), field: "required", passes: false),
+      WrapperCase(type: .nonNull(.list(.named("ID"))), field: "list", passes: true),
+      WrapperCase(type: .list(.nonNull(.named("ID"))), field: "list", passes: false)
+    ]
+    for item in cases {
+      let document = GatewayGraphQLDocument(
+        operationType: .query,
+        variableDefinitions: [.init(name: "value", type: item.type)],
+        selectionSet: [.init(name: item.field, arguments: [.init(name: "value", value: .variable("value"))], selectionSet: [.init(name: "name")])]
+      )
+      if item.passes {
+        #expect(try local.validate(document, variables: ["value": .string("a")]).rootFields.count == 1)
+      } else {
+        try expectCode("VARIABLE_TYPE", document, validator: local, variables: ["value": .string("a")])
+      }
+    }
+  }
+
+  @Test("enforces direct AST selection and type-depth boundary triples")
+  func directAstSelectionAndTypeBoundaries() throws {
+    for count in [GatewayGraphQLLimits.selections - 1, GatewayGraphQLLimits.selections, GatewayGraphQLLimits.selections + 1] {
+      let fields = (0..<(count - 1)).map { GatewayGraphQLDocument.Selection(alias: "n\($0)", name: "name") }
+      let document = GatewayGraphQLDocument(operationType: .query, selectionSet: [
+        .init(name: "labels", arguments: [.init(name: "accountId", value: .string("a"))], selectionSet: fields)
+      ])
+      try expectBoundary(document, validator: validator, over: count > GatewayGraphQLLimits.selections, path: ["labels"])
+    }
+    for wrappers in [GatewayGraphQLLimits.depth - 1, GatewayGraphQLLimits.depth, GatewayGraphQLLimits.depth + 1] {
+      var type: GatewayTypeRef = .named("ID")
+      for _ in 0..<wrappers { type = .list(type) }
+      let document = GatewayGraphQLDocument(
+        operationType: .query,
+        variableDefinitions: [.init(name: "v", type: type)],
+        selectionSet: [.init(name: "labels", arguments: [.init(name: "accountId", value: .string("a"))], selectionSet: [.init(name: "name")])]
+      )
+      do {
+        _ = try validator.validate(document)
+        Issue.record("expected unused variable or resource limit")
+      } catch let error as GatewaySDKError {
+        guard case .validation(let code, _, let path) = error else { Issue.record("expected validation error"); continue }
+        if wrappers > GatewayGraphQLLimits.depth - 1 {
+          #expect(code == "RESOURCE_LIMIT"); #expect(path == [])
+        } else { #expect(code == "UNUSED_VARIABLE") }
+      }
+    }
+  }
+
   private func expectCode(_ item: ValidationCase) throws {
     let document = try GatewayGraphQLParser.parse(item.source)
     do {
@@ -234,6 +297,39 @@ struct GraphQLValidatorTests {
     } catch let error as GatewaySDKError {
       guard case .validation(let actual, _, _) = error else { Issue.record("expected validation error"); return }
       #expect(actual == expected)
+    }
+  }
+
+  private func expectCode(
+    _ expected: String,
+    _ document: GatewayGraphQLDocument,
+    validator: GatewayGraphQLValidator,
+    variables: [String: GatewayJSONValue]
+  ) throws {
+    do {
+      _ = try validator.validate(document, variables: variables)
+      Issue.record("expected \(expected)")
+    } catch let error as GatewaySDKError {
+      guard case .validation(let actual, _, _) = error else { Issue.record("expected validation error"); return }
+      #expect(actual == expected)
+    }
+  }
+
+  private func expectBoundary(
+    _ document: GatewayGraphQLDocument,
+    validator: GatewayGraphQLValidator,
+    over: Bool,
+    path: [String]
+  ) throws {
+    do {
+      let result = try validator.validate(document)
+      if over { Issue.record("expected resource limit") } else { #expect(result.rootFields.count == 1) }
+    } catch let error as GatewaySDKError {
+      guard case .validation(let code, let message, let actualPath) = error else { Issue.record("expected validation error"); return }
+      #expect(over)
+      #expect(code == "RESOURCE_LIMIT")
+      #expect(message.contains("selections maximum"))
+      #expect(actualPath.starts(with: path))
     }
   }
 
