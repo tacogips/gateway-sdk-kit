@@ -74,8 +74,7 @@ struct GraphQLParserTests {
       do {
         _ = try GatewayGraphQLParser.parse(item.source)
         Issue.record("expected syntax failure")
-      }
-      catch let error as GatewaySDKError {
+      } catch let error as GatewaySDKError {
         guard case .syntax(_, let actualLine, let actualColumn) = error else { Issue.record("expected syntax error"); continue }
         #expect(actualLine == item.line)
         #expect(actualColumn == item.column)

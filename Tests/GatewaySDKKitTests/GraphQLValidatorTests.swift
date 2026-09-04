@@ -47,8 +47,7 @@ struct GraphQLValidatorTests {
     do {
       _ = try validator.validate(deep)
       Issue.record("expected RESOURCE_LIMIT")
-    }
-    catch let error as GatewaySDKError {
+    } catch let error as GatewaySDKError {
       guard case .validation(let code, _, let path) = error else { Issue.record("expected validation error"); return }
       #expect(code == "RESOURCE_LIMIT")
       #expect(path == [])
@@ -113,8 +112,7 @@ struct GraphQLValidatorTests {
     do {
       _ = try validator.validate(document)
       Issue.record("expected \(expected)")
-    }
-    catch let error as GatewaySDKError {
+    } catch let error as GatewaySDKError {
       guard case .validation(let code, _, let actualPath) = error else { Issue.record("expected validation error"); return }
       #expect(code == expected)
       #expect(actualPath == path)
