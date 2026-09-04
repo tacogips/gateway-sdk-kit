@@ -483,7 +483,7 @@ gate evidence.
 | 5 | complete | validator; corrective nested input type and resource-path accounting | `mise run build`; full corrective gate passed | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
 | 6 | complete | validator tests; corrective stable-code/input-default matrix | `swift test --filter GraphQLValidatorTests`; full corrective gate passed | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
 | 7 | complete | runtime and projection; corrective private projection result and response paths | `mise run build`; full corrective gate passed | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
-| 8 | complete | runtime fixture/tests and hostile catalog test; corrective authorization, envelope, resource, and 7/8/9 concurrency cases | `swift test --filter GraphQLRuntimeTests`; full corrective gate passed | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
+| 8 | complete | runtime fixture/tests and hostile catalog test; corrective authorization, envelope, resource-boundary, and 7/8/9 concurrency cases | `swift test --filter GraphQLRuntimeTests`; full corrective gate passed | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0`, `9cbf34f` |
 | 9 | complete | deleted inliner/renderer/tests; `SDLPrinterTests.swift`, `HostileCatalogTests.swift`, comments | `mise run build && mise run test`; stale-reference search passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 10 | complete | `README.md`, `AGENTS.md`, `Package.swift` | `mise run test` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 11 | complete | plan correction record | corrective `mise run build && mise run test && mise run lint` passed (185 tests, 0 violations); line audit max 480; stale search and diff checks passed; final `git status --porcelain` clean | none | none | `179258e` |
@@ -500,7 +500,7 @@ path, raw-envelope round-trip, mutation rejection, hostile-catalog, and 7/8/9
 concurrency coverage. Narrow reruns passed:
 `arch -arm64 /bin/zsh -lc 'swift test --filter GraphQLParserTests && swift test --filter GraphQLValidatorTests && swift test --filter GraphQLRuntimeTests'`.
 The corrective implementation is `7dd1adb89d8228d890a9a33ec7692b8981f613c0`.
-Its final full gate passed: `mise run build && mise run test && mise run lint` (185
+The final corrective full gate passed: `mise run build && mise run test && mise run lint` (185
 tests, SwiftLint 0); line audit (maximum 480 lines), stale-inliner search, and both
 diff checks passed. This documentation commit records the final clean-worktree check.
 
