@@ -310,3 +310,51 @@ worktree; commit them FIRST, before task 1:
    tests; brief's Tests section fully mapped.
 4. README documents the API with the tour; design doc and this plan committed.
 5. Every commit on main, focused, no AI attribution, nothing pushed.
+
+## Progress (updated 2026-09-04, implementation complete)
+
+All nine commits landed on `main`, each green at the gate before the next started.
+
+| Task | Commit | Status |
+| --- | --- | --- |
+| 0 design doc + plan | `500d918` | done |
+| 1 JSON value + errors | `c256257` | done |
+| 2 type ref, catalog model, validation, fixtures | `61b3a5a` | done |
+| 3 SDL printer | `5536774` | done |
+| 4 schema search | `f461ffb` | done |
+| 5 document builder, selection planner, type check, argv | `120899f` | done |
+| 6 lexer, literal renderer, variable inliner | `34c5e69` | done |
+| 7 envelope + GatewaySDK protocol | `3b24ae2` | done |
+| 8 README tour + final sweep | `34ccf3f` | done |
+
+Final gate: `arch -arm64 /bin/zsh -lc 'swift build && swift test && swiftlint'`
+exits 0 — 160 tests in 12 suites pass, swiftlint reports 0 violations in 32 files, the
+build emits no warnings. Largest Swift file is 388 lines. `Package.swift` changed only
+to add `resources: [.copy("Fixtures")]`; `GatewaySDKKitVersion` and its test are
+untouched; the package still has no dependencies and imports only `Foundation`.
+
+### Decisions recorded while implementing
+
+- **The `Threads` golden includes `messages`.** Design §7 prints the root golden as
+  `edges { cursor node { id subject } }`, but the brief writes it as
+  `node { id subject ... }` with an elision, and this plan's task 5 states that
+  "messages at level 3 opens". With the §15 fixture (`Thread.messages: [Message!]!`)
+  the depth-3 rule necessarily selects `messages { id snippet direction }`, so the
+  committed golden is
+  `edges { cursor node { id subject messages { id snippet direction } } }`. The
+  design's shorter form was the elided illustration, not a third rule.
+- **`threads` gained a `direction: Direction` filter argument** in the gmail fixture so
+  that a single custom type is referenced by two matched operations, which is what the
+  `includeReferencedTypes` merged-`referenced-by`-label test needs. The SDL golden was
+  updated with it.
+- **Split-out helpers not named in the plan.** `GatewayVariableBinding` (in
+  `GatewayDocumentBuilder.swift`) holds the unknown/required/type-check sequence shared
+  by the document and argv builders. `GatewayVariableTypeCheck` exposes a non-throwing
+  `matches` alongside the throwing `check` so the tests can assert the §9 matrix
+  directly. `GatewayJSONValue.kindName` supplies the `actual` word in
+  `variableTypeMismatch`.
+- **NSNumber integers go through `int64Value`/`uint64Value`, not `doubleValue`**, so
+  `2^53 + 1` survives as an `Int` instead of silently rounding.
+- The README's five snippet sections were compiled and run against the real API during
+  the final sweep (throwaway test, not committed); each produces the output the README
+  documents.
