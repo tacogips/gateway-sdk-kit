@@ -379,11 +379,13 @@ the review confirmed as correct against master design section 2.3.
   pair), and made explicit: documented on `inline(document:variables:)` and in README
   section 5, and pinned by `unsuppliedNullableInlinesNull`.
 - **F3 (low, correctness) — `jsonString()` emitted `inf`/`nan`.** The serializer now
-  throws `.invalidJSONValue` for a non-finite double (`write` became `throws`). Fixed
-  at a second point too: `GatewayVariableTypeCheck.matches` rejects non-finite doubles
-  against every type including `JSON`, which closes the same hole in
-  `GatewayArgvBuilder.scalarText` and in the inliner's literal rendering — neither of
-  which routes through `jsonString()`.
+  throws `.invalidJSONValue` for a non-finite double (`write` became `throws`), and
+  `GatewayVariableTypeCheck.matches` rejects non-finite doubles as a second line of
+  defence. **This fix was incomplete — see F5 in round 2**: the type-check guard only
+  inspected the value's root, so a non-finite nested under a `JSON` or custom-scalar
+  variable still reached `GatewayArgvBuilder.scalarText` and the inliner's literal
+  rendering. Round 2 makes the scan recursive; the accurate statement of the closure is
+  recorded there.
 - **F4 (low, api-design) — default arguments shadowed conformer overrides.** The
   default argument values moved off the protocol witnesses. `searchSchema(_:options:)`
   and `invoke(_:environment:)` are now exact witnesses, and the one-argument spellings
@@ -393,3 +395,40 @@ the review confirmed as correct against master design section 2.3.
 
 Gate after the fixes: `arch -arm64 /bin/zsh -lc 'swift build && swift test && swiftlint'`
 exits 0 — 168 tests in 12 suites (up from 160), 0 lint violations, no build warnings.
+
+## Review round 2 (2026-09-04): F5 addressed
+
+The round-1 F3 fix was incomplete. Round 2 closes it properly and corrects the record.
+
+- **F5 (medium, correctness) — the non-finite guard was not recursive.**
+  `GatewayVariableTypeCheck.matches` inspected only the value's root. `JSON` and custom
+  scalars accept without descending, so an `inf`/`nan` nested in an object or array
+  passed validation and was then rendered bare by the deliberately non-throwing
+  `GraphQLLiteralRenderer`. Fixed by scanning the whole value once at the public entry
+  point (`containsNonFiniteDouble`) and moving the structural matching into a private
+  `matchesType`, which keeps the walk linear instead of re-scanning at every recursion
+  level. All four scenarios the review reproduced now throw.
+- **Two further holes in the same family, found while fixing F5 and not in the review's
+  list.** (a) A non-finite nested under a *custom scalar* — same root cause, fixed by
+  the same recursive scan. (b) An overflowing float *default* in the document, e.g.
+  `query Q($f: Float = 1e999)`: `Double("1e999")` is `+inf`, and defaults are never
+  type-checked (only supplied values are), so validation could not catch it. Fixed in
+  `GraphQLVariableInliner.parseConstValue`, which now rejects a non-finite float literal
+  as `.malformedDocument`.
+- **Argv element path.** Revision instruction 2 offered a choice; fix 1 alone is
+  sufficient and no guard was added inside `scalarText`. `GatewayArgvBuilder.build`
+  always runs `GatewayVariableBinding.validate` first, so a non-finite can no longer
+  reach `scalarText`. Verified concretely: a JSON-typed flag holding
+  `.array([.double(.infinity)])` now throws instead of returning
+  `["cmd", "go", "--j", "inf"]`. A guard in `scalarText` would have been unreachable
+  from any public entry point.
+- **Record corrected.** The round-1 F3 entry above no longer claims to have closed the
+  argv and inliner paths. The accurate scoping of the remaining renderer risk is: a
+  caller who invokes `GraphQLLiteralRenderer.render` *directly* with a value that never
+  passed `GatewayVariableTypeCheck` can still obtain `inf`, because the renderer's
+  signature is pinned non-throwing by the brief. Every kit-internal path
+  (`GraphQLVariableInliner.inline`, `GatewayArgvBuilder.build`,
+  `GatewayDocumentBuilder.build`, `GatewaySDK.invoke`) validates first.
+
+Gate after the fixes: `arch -arm64 /bin/zsh -lc 'swift build && swift test && swiftlint'`
+exits 0 — 173 tests in 12 suites (up from 168), 0 lint violations, no build warnings.
