@@ -62,6 +62,16 @@ struct GraphQLParserTests {
       return
     }
     #expect(preserved == "  first\n  second\nthird")
+
+    for lineTerminator in ["\r\n", "\r"] {
+      let source = "{ f(block: \"\"\"  first\(lineTerminator)    second\(lineTerminator)  third\(lineTerminator)\(lineTerminator)\"\"\") }"
+      let normalized = try GatewayGraphQLParser.parse(source)
+      guard case .string(let value)? = normalized.selectionSet[0].arguments.first?.value else {
+        Issue.record("expected normalized block string")
+        continue
+      }
+      #expect(value == "  first\n  second\nthird")
+    }
   }
 
   @Test("rejects unsupported operations with positions")

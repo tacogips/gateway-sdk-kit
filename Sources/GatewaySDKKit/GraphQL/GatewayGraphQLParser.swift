@@ -75,9 +75,9 @@ enum GraphQLStringDecoder {
 
   private static func decodeBlock(_ raw: String) -> String {
     let replaced = raw.replacingOccurrences(of: "\\\"\"\"", with: "\"\"\"")
-    var lines = replaced.components(separatedBy: .newlines)
+    var lines = blockLines(replaced)
     let indents = lines.dropFirst().compactMap { line -> Int? in
-      guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+      guard !isBlankBlockLine(line) else { return nil }
       return line.prefix { $0 == " " || $0 == "\t" }.count
     }
     if let indent = indents.min(), indent > 0 {
@@ -86,9 +86,31 @@ enum GraphQLStringDecoder {
         lines[lineIndex] = String(lines[lineIndex].dropFirst(min(indent, count)))
       }
     }
-    while lines.first?.trimmingCharacters(in: .whitespaces).isEmpty == true { lines.removeFirst() }
-    while lines.last?.trimmingCharacters(in: .whitespaces).isEmpty == true { lines.removeLast() }
+    while let first = lines.first, isBlankBlockLine(first) { lines.removeFirst() }
+    while let last = lines.last, isBlankBlockLine(last) { lines.removeLast() }
     return lines.joined(separator: "\n")
+  }
+
+  private static func blockLines(_ text: String) -> [String] {
+    var lines: [String] = []
+    var line = ""
+    var index = text.startIndex
+    while index < text.endIndex {
+      let character = text[index]
+      if character == "\r\n" || character == "\r" || character == "\n" {
+        lines.append(line)
+        line = ""
+      } else {
+        line.append(character)
+      }
+      index = text.index(after: index)
+    }
+    lines.append(line)
+    return lines
+  }
+
+  private static func isBlankBlockLine(_ line: String) -> Bool {
+    line.allSatisfy { $0 == " " || $0 == "\t" }
   }
 
   enum StringDecodeError: Error { case invalidEscape }
