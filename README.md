@@ -180,11 +180,25 @@ try inliner.inline(
 
 The rewrite validates the wrike rules (every declared variable used, every used
 variable declared, no unknown supplied variable, required variables supplied or
-defaulted, values type-checked) and then splices the original string: the
-variable-definition parenthesis is deleted and each `$var` token is replaced by its
-literal. Whitespace, comments, strings and block strings are preserved byte for byte,
+defaulted, values type-checked, and every object key anywhere in a value a legal
+GraphQL Name) and then splices the original string: the variable-definition
+parenthesis is deleted and each `$var` token is replaced by its literal. Whitespace, comments, strings and block strings are preserved byte for byte,
 and `$`-looking text inside them is never touched. `GraphQLLexer` and
 `GraphQLLiteralRenderer` are public for callers that need the pieces directly.
+
+The object-key rule is inliner-only, and it is the one place this kit is stricter than
+its own type check. The inliner splices keys straight into GraphQL source, where they
+must be Names (`/^[_A-Za-z][_0-9A-Za-z]*$/`); a key like `page-size` would produce a
+document the gateway cannot parse, so it throws `variableTypeMismatch` instead. The
+document builder and the argv builder still carry arbitrary JSON keys unchanged — the
+builder passes variables through as a GraphQL variables map and never renders a key,
+and the argv builder JSON-encodes objects — so `validated for the builder` does not
+imply `inlinable`.
+
+```swift
+// Fine for GatewayDocumentBuilder and GatewayArgvBuilder, rejected by the inliner:
+["j": .object(["page-size": .int(50)])]
+```
 
 One semantic difference from real GraphQL variables is worth knowing: a declared, used,
 nullable variable that is neither supplied nor defaulted inlines to an explicit `null`.

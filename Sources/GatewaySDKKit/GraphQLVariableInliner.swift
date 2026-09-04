@@ -23,6 +23,14 @@ public struct GraphQLVariableInliner: Sendable {
   /// `arg: $var` pair the way an omitted GraphQL variable would. For an argument that
   /// distinguishes "absent" from `null` — a patch-style mutation, say — supply a value
   /// or give the variable a default rather than relying on omission.
+  ///
+  /// Every object key anywhere in a value being spliced must be a legal GraphQL Name
+  /// (`/^[_A-Za-z][_0-9A-Za-z]*$/`), else this throws `variableTypeMismatch`. That rule
+  /// is inliner-only: keys are spliced into GraphQL source here, whereas
+  /// `GatewayDocumentBuilder` passes variables through as a variables map and
+  /// `GatewayArgvBuilder` JSON-encodes objects, so both keep accepting keys like
+  /// `page-size` (pinned by `otherPathsKeepArbitraryKeys`). A value validated for those
+  /// two paths is therefore not guaranteed to be inlinable.
   public func inline(document: String, variables: [String: GatewayJSONValue]) throws -> String {
     let tokens = try GraphQLLexer.tokenize(document)
     let significant = tokens.filter { $0.kind != .comment }
