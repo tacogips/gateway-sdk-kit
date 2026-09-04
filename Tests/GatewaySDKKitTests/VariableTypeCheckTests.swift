@@ -112,6 +112,17 @@ struct VariableTypeCheckTests {
     #expect(try accepts(.null, "Nope"))
   }
 
+  @Test("a non-finite double matches no type, not even JSON")
+  func nonFiniteDoublesRejected() throws {
+    for number in [Double.infinity, -.infinity, .nan] {
+      #expect(try !accepts(.double(number), "Float"))
+      #expect(try !accepts(.double(number), "JSON"))
+      #expect(try !accepts(.double(number), "[Float]"))
+      #expect(try !accepts(.array([.double(number)]), "[Float]"))
+    }
+    #expect(try accepts(.double(1.5), "Float"))
+  }
+
   @Test("check throws variableTypeMismatch naming the outermost variable")
   func mismatchError() {
     #expect {

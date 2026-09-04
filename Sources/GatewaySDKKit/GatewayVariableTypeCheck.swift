@@ -30,6 +30,11 @@ public enum GatewayVariableTypeCheck {
     _ type: GatewayTypeRef,
     _ catalog: GatewaySchemaCatalog
   ) -> Bool {
+    // A non-finite double has no JSON or GraphQL spelling, so it can never reach a
+    // gateway intact whatever the declared type says (JSON included). Rejecting it here
+    // means the argv builder and the inliner cannot render `inf`/`nan` downstream.
+    if case .double(let number) = value, !number.isFinite { return false }
+
     if case .nonNull(let inner) = type {
       if case .null = value { return false }
       return matches(value, inner, catalog)

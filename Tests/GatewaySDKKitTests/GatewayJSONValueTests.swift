@@ -104,6 +104,25 @@ struct GatewayJSONValueTests {
     #expect(try GatewayJSONValue.parse(text) == value)
   }
 
+  @Test("non-finite doubles are rejected instead of serializing as inf or nan")
+  func nonFiniteDoubles() throws {
+    for number in [Double.infinity, -.infinity, .nan] {
+      #expect(throws: GatewaySDKError.self) {
+        _ = try GatewayJSONValue.double(number).jsonString()
+      }
+      // Also when nested, so the recursive writer cannot leak one through.
+      #expect(throws: GatewaySDKError.self) {
+        _ = try GatewayJSONValue.object(["x": .double(number)]).jsonString()
+      }
+      #expect(throws: GatewaySDKError.self) {
+        _ = try GatewayJSONValue.array([.int(1), .double(number)]).jsonString(pretty: true)
+      }
+    }
+    // Finite doubles, including the extremes, still serialize.
+    #expect(try GatewayJSONValue.double(0).jsonString() == "0.0")
+    #expect(try GatewayJSONValue.double(.greatestFiniteMagnitude).jsonString().isEmpty == false)
+  }
+
   @Test("parse rejects malformed JSON")
   func parseFailure() {
     #expect(throws: GatewaySDKError.self) {

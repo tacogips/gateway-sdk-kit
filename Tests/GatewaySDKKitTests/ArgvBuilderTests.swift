@@ -86,6 +86,13 @@ struct ArgvBuilderTests {
     )
   }
 
+  @Test("a non-finite double is rejected rather than rendered as an inf flag")
+  func nonFiniteFlagRejected() {
+    #expect(throws: GatewaySDKError.self) {
+      _ = try build("files list", ["page-size": .double(.infinity)])
+    }
+  }
+
   @Test("selection is ignored for commands")
   func selectionIgnored() throws {
     let flags = try build("files delete", ["file-id": .string("f")], selection: .raw("{ nonsense"))

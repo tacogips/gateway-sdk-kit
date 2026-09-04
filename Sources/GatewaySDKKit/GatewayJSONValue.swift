@@ -123,13 +123,20 @@ public enum GatewayJSONValue: Codable, Sendable, Equatable, Hashable {
   ///
   /// Hand-written rather than `JSONSerialization` so that key ordering, number
   /// rendering, and escaping are pinned by this package instead of by the platform.
+  /// Throws `GatewaySDKError.invalidJSONValue` for a non-finite double, which JSON
+  /// cannot represent.
   public func jsonString(pretty: Bool = false) throws -> String {
     var out = ""
-    Self.write(self, into: &out, pretty: pretty, indent: 0)
+    try Self.write(self, into: &out, pretty: pretty, indent: 0)
     return out
   }
 
-  private static func write(_ value: GatewayJSONValue, into out: inout String, pretty: Bool, indent: Int) {
+  private static func write(
+    _ value: GatewayJSONValue,
+    into out: inout String,
+    pretty: Bool,
+    indent: Int
+  ) throws {
     switch value {
     case .null:
       out += "null"
@@ -138,6 +145,11 @@ public enum GatewayJSONValue: Codable, Sendable, Equatable, Hashable {
     case .int(let number):
       out += String(number)
     case .double(let number):
+      // JSON has no spelling for infinity or NaN; String(describing:) would happily
+      // emit `inf`/`nan` and ship a document no parser accepts.
+      guard number.isFinite else {
+        throw GatewaySDKError.invalidJSONValue("non-finite double \(number)")
+      }
       out += String(describing: number)
     case .string(let text):
       out += escaped(text)
@@ -153,7 +165,7 @@ public enum GatewayJSONValue: Codable, Sendable, Equatable, Hashable {
         if pretty {
           out += "\n" + String(repeating: "  ", count: inner)
         }
-        write(element, into: &out, pretty: pretty, indent: inner)
+        try write(element, into: &out, pretty: pretty, indent: inner)
       }
       if pretty {
         out += "\n" + String(repeating: "  ", count: indent)
@@ -174,7 +186,7 @@ public enum GatewayJSONValue: Codable, Sendable, Equatable, Hashable {
         }
         out += escaped(member.key)
         out += pretty ? ": " : ":"
-        write(member.value, into: &out, pretty: pretty, indent: inner)
+        try write(member.value, into: &out, pretty: pretty, indent: inner)
       }
       if pretty {
         out += "\n" + String(repeating: "  ", count: indent)
