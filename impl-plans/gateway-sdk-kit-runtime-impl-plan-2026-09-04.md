@@ -499,7 +499,10 @@ nested-input-variable, validation-code, authorization-zero-call, projection/reso
 path, raw-envelope round-trip, mutation rejection, hostile-catalog, and 7/8/9
 concurrency coverage. Narrow reruns passed:
 `arch -arm64 /bin/zsh -lc 'swift test --filter GraphQLParserTests && swift test --filter GraphQLValidatorTests && swift test --filter GraphQLRuntimeTests'`.
-The final full gate and the amended commit hash are recorded in Task 11 after that rerun.
+The corrective implementation is `7dd1adb89d8228d890a9a33ec7692b8981f613c0`.
+Its final full gate passed: `mise run build && mise run test && mise run lint` (185
+tests, SwiftLint 0); line audit (maximum 480 lines), stale-inliner search, and both
+diff checks passed. This documentation commit records the final clean-worktree check.
 
 ## Completion criteria
 
