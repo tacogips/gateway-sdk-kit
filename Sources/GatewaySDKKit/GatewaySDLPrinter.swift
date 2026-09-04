@@ -123,10 +123,25 @@ extension GatewaySchemaCatalog {
     return "(" + rendered.joined(separator: ", ") + ")"
   }
 
+  /// Prints a description as a block string.
+  ///
+  /// Descriptions are the one channel in this printer that carries untrusted catalog
+  /// prose into generated SDL: every *name* goes through `sanitized(_:)`, which maps
+  /// illegal characters to `_`. That transform is wrong for prose — it would mangle
+  /// legitimate documentation — so descriptions are escaped instead. `\"""` is the only
+  /// escape a GraphQL block string has, and without it a description containing `"""`
+  /// closes the block early and the remainder of the text is parsed as SDL, which can
+  /// inject fabricated definitions into the schema an agent reads.
+  ///
+  /// The replacement runs on the whole text before the newline split, so a `"""` that
+  /// straddles a line boundary is still caught. A description ending in `"` needs no
+  /// padding: the closing delimiter always follows a newline plus indent, so no run of
+  /// three quotes can form across that boundary (pinned by `descriptionEndingInAQuote`).
   private static func description(_ text: String?, indent: String) -> String {
     guard let text, !text.isEmpty else { return "" }
+    let escaped = text.replacingOccurrences(of: "\"\"\"", with: "\\\"\"\"")
     var out = "\(indent)\"\"\"\n"
-    for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+    for line in escaped.split(separator: "\n", omittingEmptySubsequences: false) {
       out += line.isEmpty ? "\n" : "\(indent)\(line)\n"
     }
     out += "\(indent)\"\"\"\n"

@@ -255,6 +255,98 @@ struct SDLPrinterTests {
     #expect(GatewaySchemaCatalog(provider: "p", tier: "t").sdl() == "")
   }
 
+  // MARK: - Description escaping
+
+  /// Builds a one-object catalog whose single field carries `description`.
+  private func catalog(fieldDescription: String) -> GatewaySchemaCatalog {
+    GatewaySchemaCatalog(
+      provider: "p",
+      tier: "t",
+      types: [
+        GatewayNamedType(
+          name: "Thing",
+          kind: .object([
+            GatewayField(name: "id", type: .nonNull(.named("ID")), description: fieldDescription)
+          ])
+        )
+      ]
+    )
+  }
+
+  @Test("a description containing a block-string delimiter is escaped, not left to close the block")
+  func descriptionWithBlockDelimiterIsEscaped() throws {
+    // Without the escape the embedded `"""` closes the block, `}` closes `type Thing`
+    // early, and `type Injected` becomes a top-level definition in the schema an agent
+    // reads. Descriptions are the only untrusted channel here that is not name-sanitized.
+    let injection = #"closes the block """ then } type Injected { x: Int }"#
+    let sdl = catalog(fieldDescription: injection).sdl()
+    let expected = #"""
+      type Thing {
+        """
+        closes the block \""" then } type Injected { x: Int }
+        """
+        id: ID!
+      }
+      """#
+    #expect(sdl == expected + "\n")
+    // The injected text stays inside the block string: exactly one `type` definition.
+    #expect(sdl.components(separatedBy: "type ").count - 1 == 2)  // "type Thing" + the inert "type Injected" text
+    #expect(!sdl.contains("\n}\ntype Injected"))
+    // The kit's own lexer accepts the output and the payload survives as one token.
+    let tokens = try GraphQLLexer.tokenize(sdl)
+    let blocks = tokens.filter { $0.kind == .blockString }
+    #expect(blocks.count == 1)
+    #expect(blocks[0].text.contains(#"\""""#))
+    #expect(try GraphQLVariableInliner.decodeStringToken(blocks[0]).contains(injection))
+  }
+
+  @Test("a description ending in a quote needs no padding")
+  func descriptionEndingInAQuote() throws {
+    // The closing delimiter always follows a newline plus indent, so no run of three
+    // quotes can form across that boundary. Confirmed by lexing, not by inspection.
+    for text in ["ends in a quote\"", "ends in two\"\"", "\""] {
+      let sdl = catalog(fieldDescription: text).sdl()
+      let tokens = try GraphQLLexer.tokenize(sdl)
+      let blocks = tokens.filter { $0.kind == .blockString }
+      #expect(blocks.count == 1, "for \(text)")
+      #expect(try GraphQLVariableInliner.decodeStringToken(blocks[0]).hasSuffix(text), "for \(text)")
+    }
+  }
+
+  @Test("a multi-line description with a delimiter on its own line is escaped")
+  func multiLineDescriptionWithDelimiter() throws {
+    let text = "first line\n\"\"\"\nlast line"
+    let sdl = catalog(fieldDescription: text).sdl()
+    #expect(sdl.contains("\n  \\\"\"\"\n"))
+    let tokens = try GraphQLLexer.tokenize(sdl)
+    let blocks = tokens.filter { $0.kind == .blockString }
+    #expect(blocks.count == 1)
+    #expect(try GraphQLVariableInliner.decodeStringToken(blocks[0]).contains("\"\"\""))
+  }
+
+  @Test("a delimiter split across a line boundary is still escaped")
+  func delimiterStraddlingALineBoundary() throws {
+    // The replacement runs on the whole text before the newline split. A `""` at the end
+    // of one line followed by `"` at the start of the next does NOT form a delimiter in
+    // the output, because the newline separates them — the real risk this pins is that
+    // the escape is applied per line, which would miss a `"""` inside one line entirely.
+    let text = "a\"\"\"b\nc\"\"\"d"
+    let sdl = catalog(fieldDescription: text).sdl()
+    #expect(sdl.components(separatedBy: #"\""""#).count - 1 == 2)
+    let tokens = try GraphQLLexer.tokenize(sdl)
+    #expect(tokens.filter { $0.kind == .blockString }.count == 1)
+  }
+
+  @Test("the full-catalog goldens are unchanged by the escape")
+  func escapeLeavesOrdinaryDescriptionsUntouched() {
+    // Control: neither fixture carries a quote in any description, so both goldens must
+    // be byte-identical to what the two golden tests above already assert.
+    #expect(!FixtureCatalogs.gmail.sdl().contains("\\\"\"\""))
+    #expect(!FixtureCatalogs.documents.sdl().contains("\\\"\"\""))
+    #expect(FixtureCatalogs.gmail.sdl().contains("An RFC 3339 timestamp."))
+    #expect(FixtureCatalogs.documents.sdl().contains("Spreadsheet major dimension."))
+  }
+
   @Test("multi-line descriptions keep their line breaks inside the block string")
   func multiLineDescription() {
     let catalog = GatewaySchemaCatalog(
