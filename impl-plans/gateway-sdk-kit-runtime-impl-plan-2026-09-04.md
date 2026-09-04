@@ -478,15 +478,15 @@ gate evidence.
 | ---: | --- | --- | --- | --- | --- | --- |
 | 1 | complete | `Sources/GatewaySDKKit/GatewaySDKError.swift` | `arch -arm64 /bin/zsh -lc 'mise run build'` — passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 2 | complete | `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLDocument.swift` | `arch -arm64 /bin/zsh -lc 'mise run build'` — passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
-| 3 | complete | `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLLimits.swift`; `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLParser.swift`; `Sources/GatewaySDKKit/GraphQLLexer.swift` | `arch -arm64 /bin/zsh -lc 'mise run build && mise run test && mise run lint'` — passed, 212 tests and SwiftLint 0 | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4`; `7dd1adb89d8228d890a9a33ec7692b8981f613c0`; `344aabe`; `8dbb0b6e4fabde59772ef1c0475dfa361911f4b2` |
-| 4 | complete | `Tests/GatewaySDKKitTests/GraphQLLexerTests.swift`; `Tests/GatewaySDKKitTests/GraphQLParserTests.swift` | `arch -arm64 /bin/zsh -lc 'swift test --filter GraphQLLexerTests && swift test --filter GraphQLParserTests'` — passed, 10 lexer and 12 parser tests; final gate recorded in Task 11 | none | none | `b34a198`; `56d3ac4`; `7ca7990`; `e521a93`; `344aabe`; `8dbb0b6e4fabde59772ef1c0475dfa361911f4b2` |
+| 3 | complete | `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLLimits.swift`; `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLParser.swift`; `Sources/GatewaySDKKit/GraphQLLexer.swift` | `arch -arm64 /bin/zsh -lc 'mise run build && mise run test && mise run lint'` — passed, 213 tests and SwiftLint 0 | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4`; `7dd1adb89d8228d890a9a33ec7692b8981f613c0`; `344aabe`; `8dbb0b6e4fabde59772ef1c0475dfa361911f4b2`; `d66b334175e5f541cbd836eb74caef1dcd536985` |
+| 4 | complete | `Tests/GatewaySDKKitTests/GraphQLLexerTests.swift`; `Tests/GatewaySDKKitTests/GraphQLParserTests.swift` | `arch -arm64 /bin/zsh -lc 'swift test --filter GraphQLLexerTests && swift test --filter GraphQLParserTests'` — passed, 10 lexer and 12 parser tests; final gate recorded in Task 11 | none | none | `b34a198`; `56d3ac4`; `7ca7990`; `e521a93`; `344aabe`; `8dbb0b6e4fabde59772ef1c0475dfa361911f4b2`; `d66b334175e5f541cbd836eb74caef1dcd536985` |
 | 5 | complete | `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLValidator.swift` | `arch -arm64 /bin/zsh -lc 'swift test --filter GraphQLValidatorTests && mise run lint'` — passed, 13 tests; SwiftLint 0 | none | none | `5f6267f`; `72f4032`; `b34a198`; `12b2496`; `344aabe`; `8dbb0b6e4fabde59772ef1c0475dfa361911f4b2` |
 | 6 | complete | `Tests/GatewaySDKKitTests/GraphQLValidatorTests.swift` | `arch -arm64 /bin/zsh -lc 'swift test --filter GraphQLValidatorTests'` — passed, 13 tests; final gate recorded in Task 11 | none | none | `b34a198`; `12b2496`; `2d6a546`; `7913037`; `6a2dec9`; `599b240`; `c22dc27`; `e521a93`; `344aabe`; `8dbb0b6e4fabde59772ef1c0475dfa361911f4b2`; `ee3c55cffaa7ec866fdd08a66241270339c1b909` |
 | 7 | complete | `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLProjection.swift`; `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLRuntime.swift` | `arch -arm64 /bin/zsh -lc 'mise run build && mise run test && mise run lint'` — passed, 185 tests and SwiftLint 0 | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
 | 8 | complete | `Tests/GatewaySDKKitTests/FixtureCatalogs.swift`; `Tests/GatewaySDKKitTests/Fixtures/runtime-catalog.json`; `Tests/GatewaySDKKitTests/GraphQLRuntimeTests.swift`; `Tests/GatewaySDKKitTests/HostileCatalogTests.swift` | `arch -arm64 /bin/zsh -lc 'swift test --filter GraphQLRuntimeTests'` — passed, 19 tests; final gate recorded in Task 11 | none | none | `12b2496`; `2d6a546`; `7913037`; `6a2dec9`; `599b240`; `c22dc27`; `56d3ac4`; `7ca7990`; `e521a93`; `344aabe`; `8dbb0b6e4fabde59772ef1c0475dfa361911f4b2` |
 | 9 | complete | `Sources/GatewaySDKKit/GraphQLVariableInliner.swift` (deleted); `Sources/GatewaySDKKit/GraphQLLiteralRenderer.swift` (deleted); `Sources/GatewaySDKKit/GatewayVariableTypeCheck.swift`; `Tests/GatewaySDKKitTests/VariableInlinerTests.swift` (deleted); `Tests/GatewaySDKKitTests/HostileCatalogTests.swift`; `Tests/GatewaySDKKitTests/SDLPrinterTests.swift`; `README.md`; `AGENTS.md`; `Package.swift` | `arch -arm64 /bin/zsh -lc 'mise run build && mise run test && rg -n -i "inliner|GraphQLVariableInliner|GraphQLLiteralRenderer" Sources Tests README.md AGENTS.md Package.swift'` — build/test passed; search returned no matches | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 10 | complete | `README.md`; `AGENTS.md`; `Package.swift` | `arch -arm64 /bin/zsh -lc 'mise run test'` — passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4`; `344aabe` |
-| 11 | complete | `impl-plans/gateway-sdk-kit-runtime-impl-plan-2026-09-04.md` | `arch -arm64 /bin/zsh -lc 'mise run build && mise run test && mise run lint'` — passed, 213 tests and SwiftLint 0; `wc -l Sources/GatewaySDKKit/*.swift Sources/GatewaySDKKit/GraphQL/*.swift Tests/GatewaySDKKitTests/*.swift` — maximum 739; `rg -n -i 'inliner|GraphQLVariableInliner|GraphQLLiteralRenderer' Sources Tests README.md AGENTS.md Package.swift` — no matches; `git diff --check 8cf47d2..HEAD && git diff --cached --check && git status --porcelain` — passed and clean after final documentation commit | none | none | `e521a93`; `344aabe`; `3ba78c3d1cd283529b78ad08c26a555972373a13`; `17758bd`; `8dbb0b6e4fabde59772ef1c0475dfa361911f4b2`; `ee3c55cffaa7ec866fdd08a66241270339c1b909` |
+| 11 | complete | `impl-plans/gateway-sdk-kit-runtime-impl-plan-2026-09-04.md` | `arch -arm64 /bin/zsh -lc 'mise run build && mise run test && mise run lint'` — passed, 213 tests and SwiftLint 0; `wc -l Sources/GatewaySDKKit/*.swift Sources/GatewaySDKKit/GraphQL/*.swift Tests/GatewaySDKKitTests/*.swift` — maximum 739; `rg -n -i 'inliner|GraphQLVariableInliner|GraphQLLiteralRenderer' Sources Tests README.md AGENTS.md Package.swift` — no matches; `git diff --check 8cf47d2..HEAD && git diff --cached --check && git status --porcelain` — passed and clean after final documentation commit | none | none | `e521a93`; `344aabe`; `3ba78c3d1cd283529b78ad08c26a555972373a13`; `17758bd`; `8dbb0b6e4fabde59772ef1c0475dfa361911f4b2`; `ee3c55cffaa7ec866fdd08a66241270339c1b909`; `dda7d1e93e715a09aada7b371e9e0b1e614e9ac9`; `d66b334175e5f541cbd836eb74caef1dcd536985` |
 
 Self-review correction (2026-09-04): the initial Task 4, 6, and 8 completion entries
 were not supported by their four focused tests. `comm-001058` required revision before
@@ -645,6 +645,25 @@ with parser depth accounting. The full gate passed:
 tests in 16 suites; SwiftLint 0). No blocker or accepted-design divergence remains;
 the final line, stale-reference, diff, and clean-worktree checks are recorded in
 Task 11.
+
+Block-string line-ending correction (2026-09-04): `comm-001097` found that
+`components(separatedBy: .newlines)` split a CRLF sequence twice, materializing an
+extra blank line. `d66b334175e5f541cbd836eb74caef1dcd536985` replaces that split with
+a `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLParser.swift` scanner that treats
+CRLF, CR, and LF as one line terminator, normalizes them to LF, preserves first-line
+indentation, and removes common indentation and repeated surrounding blank lines.
+`Tests/GatewaySDKKitTests/GraphQLParserTests.swift` asserts exact CRLF and CR values.
+The initial focused parser command failed because `Optional.isSomeAnd` is unavailable
+in this Swift toolchain; replacing it with `while let` loops resolved the compile
+failure. The corrected focused commands passed:
+`arch -arm64 /bin/zsh -lc 'swift test --filter GraphQLLexerTests && swift test --filter
+GraphQLParserTests && swift test --filter GraphQLValidatorTests && swift test --filter
+GraphQLRuntimeTests && mise run lint'` (10 lexer, 12 parser, 13 validator, 19 runtime
+tests; SwiftLint 0). The full gate passed:
+`arch -arm64 /bin/zsh -lc 'mise run build && mise run test && mise run lint'` (213
+tests in 16 suites; SwiftLint 0). Task 11 now records the omitted final documentation
+commit `dda7d1e93e715a09aada7b371e9e0b1e614e9ac9`; no blocker or design divergence
+remains.
 
 ## Completion criteria
 
