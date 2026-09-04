@@ -183,6 +183,99 @@ struct DocumentBuilderTests {
     #expect(GatewaySelectionPlanner.defaultSelection(of: "Root", catalog: catalog).map(\.name) == ["ok"])
   }
 
+  @Test("a composite result whose default selection is empty throws rather than emitting a bare field")
+  func emptyDefaultSelectionThrows() throws {
+    // GraphQL requires a selection set on a composite field, so emitting `top` bare would
+    // ship a document the gateway cannot parse. This is not the scalar-result case.
+    let allFieldsSkipped = GatewaySchemaCatalog(
+      provider: "p",
+      tier: "t",
+      operations: [GatewayOperation(name: "top", kind: .query, tier: "t", result: .named("Empty"))],
+      types: [
+        GatewayNamedType(
+          name: "Empty",
+          kind: .object([
+            GatewayField(
+              name: "needsArg",
+              type: .named("Int"),
+              arguments: [GatewayArgument(name: "x", type: .nonNull(.named("Int")))]
+            )
+          ])
+        )
+      ]
+    )
+    #expect {
+      _ = try GatewayDocumentBuilder(catalog: allFieldsSkipped)
+        .build(GatewayOperationRequest(operation: "top"))
+    } throws: { error in
+      error as? GatewaySDKError == .emptySelection(operation: "top", type: "Empty")
+    }
+    #expect(
+      allFieldsSkipped.validate().contains(
+        GatewaySchemaProblem(
+          path: "operation.top.result",
+          message: "result type 'Empty' yields an empty default selection"
+        )
+      )
+    )
+
+    // Mutually recursive objects with no scalar field anywhere: the cycle stop leaves
+    // both sides empty, so the root has nothing to select either.
+    let mutuallyRecursive = GatewaySchemaCatalog(
+      provider: "p",
+      tier: "t",
+      operations: [GatewayOperation(name: "a", kind: .query, tier: "t", result: .named("A"))],
+      types: [
+        GatewayNamedType(name: "A", kind: .object([GatewayField(name: "b", type: .named("B"))])),
+        GatewayNamedType(name: "B", kind: .object([GatewayField(name: "a", type: .named("A"))]))
+      ]
+    )
+    #expect {
+      _ = try GatewayDocumentBuilder(catalog: mutuallyRecursive)
+        .build(GatewayOperationRequest(operation: "a"))
+    } throws: { error in
+      error as? GatewaySDKError == .emptySelection(operation: "a", type: "A")
+    }
+    #expect(
+      mutuallyRecursive.validate().contains(
+        GatewaySchemaProblem(
+          path: "operation.a.result",
+          message: "result type 'A' yields an empty default selection"
+        )
+      )
+    )
+
+    // `.raw` still drives these operations, so the validate() problem is advisory.
+    #expect(
+      try GatewayDocumentBuilder(catalog: mutuallyRecursive).build(
+        GatewayOperationRequest(operation: "a", selection: .raw("{ b { a { b } } }"))
+      ).document == "query A {\n  a { b { a { b } } }\n}"
+    )
+  }
+
+  @Test("a scalar or enum result still emits no selection set, and validate stays quiet")
+  func leafResultIsNotConfusedWithAnEmptySelection() throws {
+    // The control for the rule above: `.none` must remain reachable for a genuine leaf.
+    let catalog = GatewaySchemaCatalog(
+      provider: "p",
+      tier: "t",
+      operations: [
+        GatewayOperation(name: "count", kind: .query, tier: "t", result: .nonNull(.named("Int"))),
+        GatewayOperation(name: "mode", kind: .query, tier: "t", result: .named("Direction")),
+        GatewayOperation(name: "blob", kind: .query, tier: "t", result: .named("JSON"))
+      ],
+      types: [GatewayNamedType(name: "Direction", kind: .enumeration(["IN", "OUT"]))]
+    )
+    let builder = GatewayDocumentBuilder(catalog: catalog)
+    #expect(try builder.build(GatewayOperationRequest(operation: "count")).document
+      == "query Count {\n  count\n}")
+    #expect(try builder.build(GatewayOperationRequest(operation: "mode")).document
+      == "query Mode {\n  mode\n}")
+    #expect(try builder.build(GatewayOperationRequest(operation: "blob")).document
+      == "query Blob {\n  blob\n}")
+    #expect(catalog.validate() == [])
+  }
+
   // MARK: - .fields paths
 
   @Test("valid dot paths select scalars, nest, and expand object leaves")

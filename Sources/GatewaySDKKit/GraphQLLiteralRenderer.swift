@@ -36,7 +36,15 @@ public enum GraphQLLiteralRenderer {
       var inputFields: [String: GatewayArgument] = [:]
       if let name = namedTypeName(of: unwrapped),
         let fields = catalog.namedType(name)?.inputFields {
-        inputFields = Dictionary(uniqueKeysWithValues: fields.map { ($0.name, $0) })
+        // Catalog names are runtime JSON from five separate gateways, so a duplicate is
+        // data this kit must survive, not a programmer error.
+        // `Dictionary(uniqueKeysWithValues:)` traps on one — an uncatchable crash that
+        // bypasses the throwing-GatewaySDKError contract entirely. First-wins is chosen
+        // deliberately. Do not restore the trapping form.
+        inputFields = Dictionary(
+          fields.map { ($0.name, $0) },
+          uniquingKeysWith: { first, _ in first }
+        )
       }
       let rendered = members.sorted { $0.key < $1.key }.map { member in
         "\(member.key): \(render(member.value, as: inputFields[member.key]?.type, catalog: catalog))"

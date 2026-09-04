@@ -18,6 +18,7 @@ public enum GatewaySDKError: Error, Sendable, Equatable, CustomStringConvertible
   case invalidTypeReference(String)
   case invalidJSON(String)
   case invalidJSONValue(String)
+  case emptySelection(operation: String, type: String)
 
   public var description: String {
     switch self {
@@ -49,6 +50,8 @@ public enum GatewaySDKError: Error, Sendable, Equatable, CustomStringConvertible
       return "invalid JSON: \(message)"
     case .invalidJSONValue(let message):
       return "invalid JSON value: \(message)"
+    case .emptySelection(let operation, let type):
+      return "operation '\(operation)' returns '\(type)', which yields no selectable fields"
     }
   }
 }

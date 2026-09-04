@@ -108,7 +108,12 @@ public enum GatewayVariableTypeCheck {
       return false
     case .inputObject(let fields):
       guard case .object(let members) = value else { return false }
-      let byName = Dictionary(uniqueKeysWithValues: fields.map { ($0.name, $0) })
+      // Catalog names are runtime JSON from five separate gateways, so a duplicate is
+      // data this kit must survive, not a programmer error.
+      // `Dictionary(uniqueKeysWithValues:)` traps on one — an uncatchable crash that
+      // bypasses the throwing-GatewaySDKError contract entirely. First-wins is chosen
+      // deliberately. Do not restore the trapping form.
+      let byName = Dictionary(fields.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
       for (key, member) in members {
         guard let field = byName[key] else { return false }
         guard matchesType(member, field.type, catalog) else { return false }

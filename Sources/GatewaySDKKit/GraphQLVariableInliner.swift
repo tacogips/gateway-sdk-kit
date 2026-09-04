@@ -270,7 +270,14 @@ public struct GraphQLVariableInliner: Sendable {
     supplied: [String: GatewayJSONValue],
     operation: String
   ) throws {
-    let declaredByName = Dictionary(uniqueKeysWithValues: declarations.map { ($0.name, $0) })
+    // Unreachable today: parseVariableDefinitions rejects a duplicate declaration
+    // before this runs. Hardened anyway so correctness does not rest on an upstream
+    // guard, first-wins to match the catalog-side sites. Do not restore the trapping
+    // `Dictionary(uniqueKeysWithValues:)` form.
+    let declaredByName = Dictionary(
+      declarations.map { ($0.name, $0) },
+      uniquingKeysWith: { first, _ in first }
+    )
     let usedNames = Set(bodyVariables.compactMap(\.variableName))
 
     for name in supplied.keys.sorted() where declaredByName[name] == nil {
@@ -368,7 +375,14 @@ public struct GraphQLVariableInliner: Sendable {
     declarations: [VariableDeclaration],
     supplied: [String: GatewayJSONValue]
   ) -> String {
-    let declaredByName = Dictionary(uniqueKeysWithValues: declarations.map { ($0.name, $0) })
+    // Unreachable today: parseVariableDefinitions rejects a duplicate declaration
+    // before this runs. Hardened anyway so correctness does not rest on an upstream
+    // guard, first-wins to match the catalog-side sites. Do not restore the trapping
+    // `Dictionary(uniqueKeysWithValues:)` form.
+    let declaredByName = Dictionary(
+      declarations.map { ($0.name, $0) },
+      uniquingKeysWith: { first, _ in first }
+    )
     var edits: [(range: Range<String.Index>, replacement: String)] = []
     if let definitionRange {
       edits.append((definitionRange, ""))

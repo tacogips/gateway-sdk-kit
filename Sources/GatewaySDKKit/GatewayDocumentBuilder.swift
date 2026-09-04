@@ -111,17 +111,29 @@ public struct GatewayDocumentBuilder: Sendable {
     let resultTypeName = result.namedTypeName
     guard !GatewaySelectionPlanner.isLeafType(resultTypeName, catalog: catalog) else { return .none }
 
+    // Past this guard the result is composite, so GraphQL *requires* a selection set.
+    // An empty selection here is not the `.none` case — that branch exists only for the
+    // scalar/enum/JSON result above. Emitting the field bare would ship a document the
+    // gateway cannot parse, so report it instead: for `.default` the catalog itself
+    // cannot produce a document for this operation, and for `.fields` the caller passed
+    // paths that resolved to nothing.
     switch selection {
     case .default:
       let nodes = GatewaySelectionPlanner.defaultSelection(of: resultTypeName, catalog: catalog)
-      return nodes.isEmpty ? .none : .nodes(nodes)
+      guard !nodes.isEmpty else {
+        throw GatewaySDKError.emptySelection(operation: operation.name, type: resultTypeName)
+      }
+      return .nodes(nodes)
     case .fields(let paths):
       let nodes = try GatewaySelectionPlanner.selection(
         forPaths: paths,
         of: resultTypeName,
         catalog: catalog
       )
-      return nodes.isEmpty ? .none : .nodes(nodes)
+      guard !nodes.isEmpty else {
+        throw GatewaySDKError.emptySelection(operation: operation.name, type: resultTypeName)
+      }
+      return .nodes(nodes)
     case .raw:
       return .none
     }
@@ -145,7 +157,15 @@ enum GatewayVariableBinding {
     against operation: GatewayOperation,
     catalog: GatewaySchemaCatalog
   ) throws {
-    let declared = Dictionary(uniqueKeysWithValues: operation.arguments.map { ($0.name, $0) })
+    // Catalog names are runtime JSON from five separate gateways, so a duplicate is
+    // data this kit must survive, not a programmer error.
+    // `Dictionary(uniqueKeysWithValues:)` traps on one — an uncatchable crash that
+    // bypasses the throwing-GatewaySDKError contract entirely. First-wins is chosen
+    // deliberately. Do not restore the trapping form.
+    let declared = Dictionary(
+      operation.arguments.map { ($0.name, $0) },
+      uniquingKeysWith: { first, _ in first }
+    )
     for name in variables.keys.sorted() where declared[name] == nil {
       throw GatewaySDKError.unknownVariable(operation: operation.name, name: name)
     }
