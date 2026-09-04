@@ -478,15 +478,15 @@ gate evidence.
 | ---: | --- | --- | --- | --- | --- | --- |
 | 1 | complete | `Sources/GatewaySDKKit/GatewaySDKError.swift` | `mise run build` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 2 | complete | `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLDocument.swift` | `mise run build` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
-| 3 | complete | `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLParser.swift`, `GatewayGraphQLLimits.swift`, `GraphQLLexer.swift` | `mise run build`; `mise run test` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
-| 4 | complete | `Tests/GatewaySDKKitTests/GraphQLParserTests.swift`, `GraphQLLexerTests.swift` | `mise run test` passed (172 tests) | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
-| 5 | complete | `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLValidator.swift` | `mise run build`; `mise run test` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
-| 6 | complete | `Tests/GatewaySDKKitTests/GraphQLValidatorTests.swift` | `mise run test` passed (172 tests) | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
-| 7 | complete | `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLRuntime.swift`, `GatewayGraphQLProjection.swift` | `mise run build`; `mise run test` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
-| 8 | complete | `Tests/GatewaySDKKitTests/GraphQLRuntimeTests.swift`, `Fixtures/runtime-catalog.json`, `FixtureCatalogs.swift` | `mise run test` passed (172 tests) | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
+| 3 | complete | parser, limits, lexer; corrective parser surrogate decoder | `mise run build`; full corrective gate passed (185 tests) | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
+| 4 | complete | parser and lexer tests; corrective supported/rejection/position matrix | `swift test --filter GraphQLParserTests`; full corrective gate passed | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
+| 5 | complete | validator; corrective nested input type and resource-path accounting | `mise run build`; full corrective gate passed | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
+| 6 | complete | validator tests; corrective stable-code/input-default matrix | `swift test --filter GraphQLValidatorTests`; full corrective gate passed | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
+| 7 | complete | runtime and projection; corrective private projection result and response paths | `mise run build`; full corrective gate passed | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
+| 8 | complete | runtime fixture/tests and hostile catalog test; corrective authorization, envelope, resource, and 7/8/9 concurrency cases | `swift test --filter GraphQLRuntimeTests`; full corrective gate passed | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
 | 9 | complete | deleted inliner/renderer/tests; `SDLPrinterTests.swift`, `HostileCatalogTests.swift`, comments | `mise run build && mise run test`; stale-reference search passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 10 | complete | `README.md`, `AGENTS.md`, `Package.swift` | `mise run test` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
-| 11 | complete | this plan and design record | `arch -arm64 /bin/zsh -lc 'mise run lint'` passed with 0 violations; `mise run build && mise run test` passed (172 tests); line audit, stale-reference search, `git diff --check`, and `git diff --cached --check` passed | none | none | `b482f0a8f39117e733654422dabe1da61931e2e7` |
+| 11 | complete | plan correction record | corrective `mise run build && mise run test && mise run lint` passed (185 tests, 0 violations); line audit max 480; stale search and diff checks passed; final `git status --porcelain` clean | none | none | `179258e` |
 
 Self-review correction (2026-09-04): the initial Task 4, 6, and 8 completion entries
 were not supported by their four focused tests. `comm-001058` required revision before
