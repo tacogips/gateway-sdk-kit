@@ -4,6 +4,13 @@ import Testing
 
 @Suite("GraphQL lexer")
 struct GraphQLLexerTests {
+  private struct SyntaxCase {
+    let source: String
+    let message: String
+    let line: Int
+    let column: Int
+  }
+
   @Test("token kinds and texts on a small document")
   func kindsAndTexts() throws {
     let source = "# lead\nquery Q($a: [Int!]! = 3, $b: Float = -1.5e+2) {\n  f(a: $a, s: \"x\\ny\") { ...F }\n}"
@@ -77,27 +84,40 @@ struct GraphQLLexerTests {
     #expect(tokens[1].variableName == nil)
   }
 
-  @Test(
-    "malformed input throws malformedDocument",
-    arguments: [
-      "{ f(a: \"unterminated) }",
-      "{ f(a: \"\"\"unterminated) }",
-      "{ f(a: %) }",
-      "{ f(a: $) }",
-      "{ f(a: 1.) }",
-      "{ f(a: 1e) }",
-      "{ f(a: -) }"
+  @Test("lexer failures report exact syntax messages and source positions")
+  func lexerFailures() {
+    let cases = [
+      SyntaxCase(source: "{ f(a: \"unterminated) }", message: "unterminated string", line: 1, column: 8),
+      SyntaxCase(source: "{ f(a: \"\"\"unterminated) }", message: "unterminated block string", line: 1, column: 8),
+      SyntaxCase(source: "{ f(a: %) }", message: "unexpected character '%'", line: 1, column: 8),
+      SyntaxCase(source: "{ f(a: $) }", message: "expected a variable name", line: 1, column: 8),
+      SyntaxCase(source: "{ f(a: 1.) }", message: "expected digits after '.'", line: 1, column: 10),
+      SyntaxCase(source: "{ f(a: 1e) }", message: "expected exponent digits", line: 1, column: 10),
+      SyntaxCase(source: "{ f(a: -) }", message: "expected digits", line: 1, column: 8)
     ]
-  )
-  func malformed(_ source: String) {
-    #expect(throws: GatewaySDKError.self) {
-      _ = try GraphQLLexer.tokenize(source)
-    }
+    for item in cases { expectSyntax(item) }
   }
 
   @Test("an empty document yields no tokens")
   func empty() throws {
     #expect(try GraphQLLexer.tokenize("").isEmpty)
     #expect(try GraphQLLexer.tokenize("   \n\t ").isEmpty)
+  }
+
+  private func expectSyntax(_ item: SyntaxCase) {
+    do {
+      _ = try GraphQLLexer.tokenize(item.source)
+      Issue.record("expected syntax failure")
+    } catch let error as GatewaySDKError {
+      guard case .syntax(let message, let line, let column) = error else {
+        Issue.record("expected syntax error")
+        return
+      }
+      #expect(message == item.message)
+      #expect(line == item.line)
+      #expect(column == item.column)
+    } catch {
+      Issue.record("unexpected error \(error)")
+    }
   }
 }
