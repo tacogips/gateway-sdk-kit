@@ -368,27 +368,28 @@ struct GraphQLRuntimeTests {
       let envelope = await (try makeRuntime(recorder: recorder)).execute(document: paddedDocument(bytes), context: .init())
       #expect(envelope.exitCode == (bytes > GatewayGraphQLLimits.documentBytes ? 2 : 0))
       #expect(await recorder.snapshot().0 == (bytes > GatewayGraphQLLimits.documentBytes ? 0 : 1))
+      if bytes > GatewayGraphQLLimits.documentBytes { try expectRequestLimit(envelope, code: "SYNTAX") }
     }
     for tokens in [GatewayGraphQLLimits.tokens - 1, GatewayGraphQLLimits.tokens, GatewayGraphQLLimits.tokens + 1] {
       let recorder = CallRecorder()
       let envelope = await (try makeRuntime(recorder: recorder)).execute(document: tokenBoundedDocument(tokens), context: .init())
       #expect(envelope.exitCode == (tokens > GatewayGraphQLLimits.tokens ? 2 : 0))
       #expect(await recorder.snapshot().0 == (tokens > GatewayGraphQLLimits.tokens ? 0 : 1))
-      if tokens > GatewayGraphQLLimits.tokens { #expect(envelope.errors.first?.code == "SYNTAX") }
+      if tokens > GatewayGraphQLLimits.tokens { try expectRequestLimit(envelope, code: "SYNTAX") }
     }
     for count in [GatewayGraphQLLimits.selections - 1, GatewayGraphQLLimits.selections, GatewayGraphQLLimits.selections + 1] {
       let recorder = CallRecorder()
       let envelope = await (try makeRuntime(recorder: recorder)).execute(document: selectionBoundedDocument(count), context: .init())
       #expect(envelope.exitCode == (count > GatewayGraphQLLimits.selections ? 2 : 0))
       #expect(await recorder.snapshot().0 == (count > GatewayGraphQLLimits.selections ? 0 : 1))
-      if count > GatewayGraphQLLimits.selections { #expect(resourceEnvelopeCode(envelope.errors.first?.code)) }
+      if count > GatewayGraphQLLimits.selections { try expectRequestLimit(envelope) }
     }
     for count in [GatewayGraphQLLimits.rootFields - 1, GatewayGraphQLLimits.rootFields, GatewayGraphQLLimits.rootFields + 1] {
       let recorder = CallRecorder()
       let envelope = await (try makeRuntime(recorder: recorder)).execute(document: rootBoundedDocument(count), context: .init())
       #expect(envelope.exitCode == (count > GatewayGraphQLLimits.rootFields ? 2 : 0))
       #expect(await recorder.snapshot().0 == (count > GatewayGraphQLLimits.rootFields ? 0 : count))
-      if count > GatewayGraphQLLimits.rootFields { #expect(resourceEnvelopeCode(envelope.errors.first?.code)) }
+      if count > GatewayGraphQLLimits.rootFields { try expectRequestLimit(envelope) }
     }
     for nodes in [9_998, 9_999, 10_000] {
       let recorder = CallRecorder()
@@ -399,7 +400,7 @@ struct GraphQLRuntimeTests {
       )
       #expect(envelope.exitCode == (nodes > 9_999 ? 2 : 0))
       #expect(await recorder.snapshot().0 == (nodes > 9_999 ? 0 : 1))
-      if nodes > 9_999 { #expect(envelope.errors.first?.code == "RESOURCE_LIMIT") }
+      if nodes > 9_999 { try expectRequestLimit(envelope, code: "RESOURCE_LIMIT") }
     }
     for count in [GatewayGraphQLLimits.containerEntries - 1, GatewayGraphQLLimits.containerEntries, GatewayGraphQLLimits.containerEntries + 1] {
       let recorder = CallRecorder()
@@ -409,6 +410,7 @@ struct GraphQLRuntimeTests {
       )
       #expect(envelope.exitCode == (count > GatewayGraphQLLimits.containerEntries ? 2 : 0))
       #expect(await recorder.snapshot().0 == (count > GatewayGraphQLLimits.containerEntries ? 0 : 1))
+      if count > GatewayGraphQLLimits.containerEntries { try expectRequestLimit(envelope, code: "RESOURCE_LIMIT") }
     }
     for levels in [GatewayGraphQLLimits.depth - 2, GatewayGraphQLLimits.depth - 1, GatewayGraphQLLimits.depth] {
       let recorder = CallRecorder()
@@ -418,7 +420,7 @@ struct GraphQLRuntimeTests {
       )
       #expect(envelope.exitCode == (levels >= GatewayGraphQLLimits.depth ? 2 : 0))
       #expect(await recorder.snapshot().0 == (levels >= GatewayGraphQLLimits.depth ? 0 : 1))
-      if levels >= GatewayGraphQLLimits.depth { #expect(envelope.errors.first?.code == "RESOURCE_LIMIT") }
+      if levels >= GatewayGraphQLLimits.depth { try expectRequestLimit(envelope, code: "RESOURCE_LIMIT") }
     }
     for count in [GatewayGraphQLLimits.containerEntries - 1, GatewayGraphQLLimits.containerEntries, GatewayGraphQLLimits.containerEntries + 1] {
       let recorder = CallRecorder()
@@ -427,7 +429,23 @@ struct GraphQLRuntimeTests {
       )
       #expect(envelope.exitCode == (count > GatewayGraphQLLimits.containerEntries ? 2 : 0))
       #expect(await recorder.snapshot().0 == (count > GatewayGraphQLLimits.containerEntries ? 0 : 1))
-      if count > GatewayGraphQLLimits.containerEntries { #expect(resourceEnvelopeCode(envelope.errors.first?.code)) }
+      if count > GatewayGraphQLLimits.containerEntries { try expectRequestLimit(envelope) }
+    }
+    // Parser nesting includes the root argument context, so 30 literal list wrappers
+    // is the public depth-32 maximum and 31 is its first over-limit request.
+    for levels in [GatewayGraphQLLimits.depth - 3, GatewayGraphQLLimits.depth - 2, GatewayGraphQLLimits.depth - 1] {
+      let recorder = CallRecorder()
+      let envelope = await (try jsonInputRuntime(recorder)).execute(document: literalNestedInputDocument(levels), context: .init())
+      #expect(envelope.exitCode == (levels >= GatewayGraphQLLimits.depth - 1 ? 2 : 0))
+      #expect(await recorder.snapshot().0 == (levels >= GatewayGraphQLLimits.depth - 1 ? 0 : 1))
+      if levels >= GatewayGraphQLLimits.depth - 1 { try expectRequestLimit(envelope) }
+    }
+    for nodes in [9_999, 10_000, 10_001] {
+      let recorder = CallRecorder()
+      let envelope = await (try jsonInputRuntime(recorder)).execute(document: literalNodeInputDocument(nodes), context: .init())
+      #expect(envelope.exitCode == (nodes > GatewayGraphQLLimits.inputValueNodes ? 2 : 0))
+      #expect(await recorder.snapshot().0 == (nodes > GatewayGraphQLLimits.inputValueNodes ? 0 : 1))
+      if nodes > GatewayGraphQLLimits.inputValueNodes { try expectRequestLimit(envelope) }
     }
   }
 
@@ -520,6 +538,33 @@ struct GraphQLRuntimeTests {
   private func literalInputDocument(_ count: Int) -> String {
     let values = Array(repeating: "1", count: count).joined(separator: ",")
     return "{ inspect(payload: [\(values)]) }"
+  }
+
+  private func literalNestedInputDocument(_ levels: Int) -> String {
+    var value = "1"
+    for _ in 0..<levels { value = "[\(value)]" }
+    return "{ inspect(payload: \(value)) }"
+  }
+
+  private func literalNodeInputDocument(_ nodes: Int) -> String {
+    let leaves = nodes - 1_001
+    let fullRows = leaves / 9
+    let remaining = leaves % 9
+    var rows = Array(repeating: "[1,1,1,1,1,1,1,1,1]", count: fullRows)
+    if remaining > 0 { rows.append("[" + Array(repeating: "1", count: remaining).joined(separator: ",") + "]") }
+    while rows.count < 1_000 { rows.append("[]") }
+    return "{ inspect(payload: [\(rows.joined(separator: ","))]) }"
+  }
+
+  private func expectRequestLimit(_ envelope: GatewayEnvelope, code: String? = nil) throws {
+    #expect(envelope.exitCode == 2)
+    #expect(envelope.data == nil)
+    #expect(envelope.errors.count == 1)
+    if let code {
+      #expect(envelope.errors.first?.code == code)
+    } else {
+      #expect(resourceEnvelopeCode(envelope.errors.first?.code))
+    }
   }
 
   private func resourceEnvelopeCode(_ code: String?) -> Bool {

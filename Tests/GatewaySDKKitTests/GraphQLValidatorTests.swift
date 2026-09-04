@@ -16,6 +16,12 @@ struct GraphQLValidatorTests {
     let passes: Bool
   }
 
+  private struct PositiveCase {
+    let code: String
+    let source: String
+    let variables: [String: GatewayJSONValue]
+  }
+
   private let validator = GatewayGraphQLValidator(catalog: FixtureCatalogs.runtime)
 
   @Test("coerces nested input variables and applies input defaults")
@@ -45,12 +51,30 @@ struct GraphQLValidatorTests {
       ValidationCase(code: "DUPLICATE_ALIAS", source: #"{ x: labels(accountId: "a") { name } x: labels(accountId: "a") { name } }"#, path: ["x"], message: "duplicate response key")
     ]
     for item in cases { try expectCode(item) }
-    try expectCode("UNKNOWN_VARIABLE", #"{ labels(accountId: "a") { name } }"#, variables: ["extra": .string("x")])
-    // Each public code has an adjacent accepted request, proving that the rejection
-    // is narrow rather than merely exercising a broad failure path.
-    let accepted = try GatewayGraphQLParser.parse(#"{ labels(accountId: "a") { name } }"#)
-    for _ in cases + [ValidationCase(code: "UNKNOWN_VARIABLE", source: "", path: [], message: "")] {
-      #expect(try validator.validate(accepted).rootFields.count == 1)
+    try expectVariableCode(
+      "UNKNOWN_VARIABLE",
+      #"{ labels(accountId: "a") { name } }"#,
+      variables: ["extra": .string("x")],
+      path: [],
+      message: "unknown variable"
+    )
+    let passing = [
+      PositiveCase(code: "UNKNOWN_FIELD", source: #"{ labels(accountId: "a") { name } }"#, variables: [:]),
+      PositiveCase(code: "UNKNOWN_ARGUMENT", source: #"{ labels(accountId: "a") { name } }"#, variables: [:]),
+      PositiveCase(code: "MISSING_ARGUMENT", source: #"{ labels(accountId: "a") { name } }"#, variables: [:]),
+      PositiveCase(code: "ARGUMENT_TYPE", source: #"{ labels(accountId: "a") { name } }"#, variables: [:]),
+      PositiveCase(code: "UNUSED_VARIABLE", source: "query($id: ID!) { labels(accountId: $id) { name } }", variables: ["id": .string("a")]),
+      PositiveCase(code: "UNDECLARED_VARIABLE", source: "query($id: ID!) { labels(accountId: $id) { name } }", variables: ["id": .string("a")]),
+      PositiveCase(code: "MISSING_VARIABLE", source: "query($id: ID!) { labels(accountId: $id) { name } }", variables: ["id": .string("a")]),
+      PositiveCase(code: "VARIABLE_TYPE", source: "query($id: ID!) { labels(accountId: $id) { name } }", variables: ["id": .string("a")]),
+      PositiveCase(code: "INVALID_SELECTION", source: #"{ labels(accountId: "a") { name } }"#, variables: [:]),
+      PositiveCase(code: "MULTIPLE_MUTATIONS", source: #"mutation { sendMessage(input: {accountId: "a", to: ["b"], body: "x"}) { messageId } }"#, variables: [:]),
+      PositiveCase(code: "DUPLICATE_ALIAS", source: #"{ first: labels(accountId: "a") { name } second: labels(accountId: "a") { name } }"#, variables: [:]),
+      PositiveCase(code: "UNKNOWN_VARIABLE", source: #"{ labels(accountId: "a") { name } }"#, variables: [:])
+    ]
+    for item in passing {
+      let document = try GatewayGraphQLParser.parse(item.source)
+      #expect(try validator.validate(document, variables: item.variables).rootFields.count > 0, "expected passing counterpart for \(item.code)")
     }
   }
 
@@ -129,11 +153,16 @@ struct GraphQLValidatorTests {
     let local = GatewayGraphQLValidator(catalog: jsonCatalog())
     for count in [GatewayGraphQLLimits.containerEntries - 1, GatewayGraphQLLimits.containerEntries, GatewayGraphQLLimits.containerEntries + 1] {
       let document = inspectDocument(value: .list(Array(repeating: GraphQLValue.int(1), count: count)))
-      try expectInputBoundary(document, validator: local, over: count > GatewayGraphQLLimits.containerEntries)
+      try expectInputBoundary(document, validator: local, over: count > GatewayGraphQLLimits.containerEntries, limit: "containerEntries", path: ["inspect"])
     }
     for nodes in [9_999, 10_000, 10_001] {
       let document = inspectDocument(value: literalRows(nodes: nodes))
-      try expectInputBoundary(document, validator: local, over: nodes > GatewayGraphQLLimits.inputValueNodes)
+      try expectInputBoundary(document, validator: local, over: nodes > GatewayGraphQLLimits.inputValueNodes, limit: "inputValueNodes", path: ["inspect"])
+    }
+    for levels in [GatewayGraphQLLimits.depth - 2, GatewayGraphQLLimits.depth - 1, GatewayGraphQLLimits.depth] {
+      var value: GraphQLValue = .int(1)
+      for _ in 0..<levels { value = .list([value]) }
+      try expectInputBoundary(inspectDocument(value: value), validator: local, over: levels >= GatewayGraphQLLimits.depth, limit: "depth", path: ["inspect"])
     }
     let variables = try GatewayGraphQLParser.parse("query($payload: JSON) { inspect(payload: $payload) }")
     for levels in [GatewayGraphQLLimits.depth - 2, GatewayGraphQLLimits.depth - 1, GatewayGraphQLLimits.depth] {
@@ -143,7 +172,29 @@ struct GraphQLValidatorTests {
         variables,
         validator: local,
         variables: ["payload": value],
-        over: levels >= GatewayGraphQLLimits.depth
+        over: levels >= GatewayGraphQLLimits.depth,
+        limit: "depth",
+        path: []
+      )
+    }
+    for count in [GatewayGraphQLLimits.containerEntries - 1, GatewayGraphQLLimits.containerEntries, GatewayGraphQLLimits.containerEntries + 1] {
+      try expectInputBoundary(
+        variables,
+        validator: local,
+        variables: ["payload": .array(Array(repeating: .int(1), count: count))],
+        over: count > GatewayGraphQLLimits.containerEntries,
+        limit: "containerEntries",
+        path: []
+      )
+    }
+    for nodes in [9_998, 9_999, 10_000] {
+      try expectInputBoundary(
+        variables,
+        validator: local,
+        variables: ["payload": .array(jsonRows(nodes: nodes))],
+        over: nodes > 9_999,
+        limit: "inputValueNodes",
+        path: []
       )
     }
   }
@@ -366,11 +417,18 @@ struct GraphQLValidatorTests {
     _ document: GatewayGraphQLDocument,
     validator: GatewayGraphQLValidator,
     variables: [String: GatewayJSONValue] = [:],
-    over: Bool
+    over: Bool,
+    limit: String,
+    path expectedPath: [String]
   ) throws {
     do {
       let result = try validator.validate(document, variables: variables)
-      if over { Issue.record("expected input resource limit") } else { #expect(result.rootFields.count == 1) }
+      if over {
+        Issue.record("expected input resource limit")
+      } else {
+        #expect(result.rootFields.count == 1)
+        #expect(result.rootFields[0].arguments["payload"] != nil)
+      }
     } catch let error as GatewaySDKError {
       guard case .validation(let code, let message, let path) = error else {
         Issue.record("expected validation error")
@@ -378,8 +436,30 @@ struct GraphQLValidatorTests {
       }
       #expect(over)
       #expect(code == "RESOURCE_LIMIT")
-      #expect(message.contains("maximum"))
-      #expect(path == ["inspect"] || path.isEmpty)
+      #expect(message.contains("\(limit) maximum"))
+      #expect(path == expectedPath)
+    }
+  }
+
+  private func expectVariableCode(
+    _ expected: String,
+    _ source: String,
+    variables: [String: GatewayJSONValue],
+    path: [String],
+    message: String
+  ) throws {
+    let document = try GatewayGraphQLParser.parse(source)
+    do {
+      _ = try validator.validate(document, variables: variables)
+      Issue.record("expected \(expected)")
+    } catch let error as GatewaySDKError {
+      guard case .validation(let code, let actualMessage, let actualPath) = error else {
+        Issue.record("expected validation error")
+        return
+      }
+      #expect(code == expected)
+      #expect(actualPath == path)
+      #expect(actualMessage.localizedCaseInsensitiveContains(message))
     }
   }
 
