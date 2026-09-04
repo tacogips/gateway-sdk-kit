@@ -479,14 +479,14 @@ gate evidence.
 | 1 | complete | `Sources/GatewaySDKKit/GatewaySDKError.swift` | `mise run build` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 2 | complete | `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLDocument.swift` | `mise run build` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 3 | complete | parser, limits, lexer; corrective parser surrogate decoder | `mise run build`; full corrective gate passed (185 tests) | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
-| 4 | in progress | parser and lexer tests; exact representative positions and byte/token boundaries added | focused parser rerun passed; remaining accepted grammar/resource cases pending | acceptance matrix completion | none | pending |
-| 5 | in progress | validator; corrective nested-input, type-depth, current-request defaults, and request-scoped node accounting | focused validator test and SwiftLint passed | Task 6/8 matrices pending | none | `5f6267f`, `72f4032` |
-| 6 | in progress | validator tests; direct-AST duplicate/type-depth/default-scope and container boundaries added | focused validator rerun passed; remaining accepted matrices pending | acceptance matrix completion | none | pending |
+| 4 | in progress | parser and lexer tests; grammar/literal acceptance, exact construct and lexer positions, and depth/selection/root/container/node triples added | `swift test --filter GraphQLParserTests` and `mise run lint` passed; remaining acceptance matrices pending | acceptance matrix completion | none | `b34a198` |
+| 5 | in progress | validator; corrective nested-input, type-depth, current-request defaults, and request-scoped node accounting without rescanning supplied/literal values | `swift test --filter GraphQLValidatorTests` and `mise run lint` passed | Task 6/8 matrices pending | none | `5f6267f`, `72f4032`, `b34a198` |
+| 6 | in progress | validator tests; direct-AST duplicate/type-depth/default-scope/container and supplied-value aggregate-budget coverage added | `swift test --filter GraphQLValidatorTests` passed; remaining accepted matrices pending | acceptance matrix completion | none | `b34a198` |
 | 7 | complete | runtime and projection; corrective private projection result and response paths | `mise run build`; full corrective gate passed | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
 | 8 | in progress | runtime fixture/tests and hostile catalog test; deterministic barrier, result-order, and depth/node boundary cases added | focused runtime rerun passed; remaining accepted matrices pending | acceptance matrix completion | none | pending |
 | 9 | complete | deleted inliner/renderer/tests; `SDLPrinterTests.swift`, `HostileCatalogTests.swift`, comments | `mise run build && mise run test`; stale-reference search passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 10 | complete | `README.md`, `AGENTS.md`, `Package.swift` | `mise run test` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
-| 11 | in progress | final-gate record | prior full gate passed (185 tests, 0 violations); rerun required after current corrective changes | Tasks 4/6/8 incomplete | none | pending |
+| 11 | in progress | final-gate record | `mise run build && mise run test && mise run lint` passed (196 tests, SwiftLint 0); line audit maximum 480; stale-reference search, `git diff --check`, and `git diff --cached --check` passed; rerun after remaining matrices | Tasks 6/8 incomplete | none | pending |
 
 Self-review correction (2026-09-04): the initial Task 4, 6, and 8 completion entries
 were not supported by their four focused tests. `comm-001058` required revision before
@@ -503,6 +503,14 @@ The corrective implementation is `7dd1adb89d8228d890a9a33ec7692b8981f613c0`.
 The final corrective full gate passed: `mise run build && mise run test && mise run lint` (185
 tests, SwiftLint 0); line audit (maximum 480 lines), stale-inliner search, and both
 diff checks passed. This documentation commit records the final clean-worktree check.
+
+Follow-up correction (2026-09-04): `comm-001064` found that the request-scoped
+counter still rescanned supplied and literal input after preflight. `b34a198` now
+passes only actually materialized catalog/input defaults to the second budget phase;
+the exact-at-limit supplied-JSON test proves a 10,000-node request is accepted once.
+The same commit expands parser acceptance/rejection and direct parser-resource tests.
+Tasks 4, 6, 8, and 11 deliberately remain in progress until every accepted matrix and
+the final gate are complete.
 
 ## Completion criteria
 
