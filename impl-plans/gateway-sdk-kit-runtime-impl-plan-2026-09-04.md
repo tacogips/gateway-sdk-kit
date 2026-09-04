@@ -484,9 +484,9 @@ gate evidence.
 | 6 | complete | `Tests/GatewaySDKKitTests/GraphQLValidatorTests.swift` | `arch -arm64 /bin/zsh -lc 'swift test --filter GraphQLValidatorTests'` — passed, 12 tests; final gate recorded in Task 11 | none | none | `b34a198`; `12b2496`; `2d6a546`; `7913037`; `6a2dec9`; `599b240`; `c22dc27`; `e521a93`; `344aabe` |
 | 7 | complete | `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLProjection.swift`; `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLRuntime.swift` | `arch -arm64 /bin/zsh -lc 'mise run build && mise run test && mise run lint'` — passed, 185 tests and SwiftLint 0 | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
 | 8 | complete | `Tests/GatewaySDKKitTests/FixtureCatalogs.swift`; `Tests/GatewaySDKKitTests/Fixtures/runtime-catalog.json`; `Tests/GatewaySDKKitTests/GraphQLRuntimeTests.swift`; `Tests/GatewaySDKKitTests/HostileCatalogTests.swift` | `arch -arm64 /bin/zsh -lc 'swift test --filter GraphQLRuntimeTests'` — passed, 18 tests; final gate recorded in Task 11 | none | none | `12b2496`; `2d6a546`; `7913037`; `6a2dec9`; `599b240`; `c22dc27`; `56d3ac4`; `7ca7990`; `e521a93`; `344aabe` |
-| 9 | complete | `Sources/GatewaySDKKit/GraphQLVariableInliner.swift` (deleted); `Sources/GatewaySDKKit/GraphQLLiteralRenderer.swift` (deleted); `Tests/GatewaySDKKitTests/VariableInlinerTests.swift` (deleted); `Tests/GatewaySDKKitTests/HostileCatalogTests.swift`; `Tests/GatewaySDKKitTests/SDLPrinterTests.swift`; `README.md`; `AGENTS.md`; `Package.swift` | `arch -arm64 /bin/zsh -lc 'mise run build && mise run test && rg -n -i "inliner|GraphQLVariableInliner|GraphQLLiteralRenderer" Sources Tests README.md AGENTS.md Package.swift'` — build/test passed; search returned no matches | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
+| 9 | complete | `Sources/GatewaySDKKit/GraphQLVariableInliner.swift` (deleted); `Sources/GatewaySDKKit/GraphQLLiteralRenderer.swift` (deleted); `Sources/GatewaySDKKit/GatewayVariableTypeCheck.swift`; `Tests/GatewaySDKKitTests/VariableInlinerTests.swift` (deleted); `Tests/GatewaySDKKitTests/HostileCatalogTests.swift`; `Tests/GatewaySDKKitTests/SDLPrinterTests.swift`; `README.md`; `AGENTS.md`; `Package.swift` | `arch -arm64 /bin/zsh -lc 'mise run build && mise run test && rg -n -i "inliner|GraphQLVariableInliner|GraphQLLiteralRenderer" Sources Tests README.md AGENTS.md Package.swift'` — build/test passed; search returned no matches | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 10 | complete | `README.md`; `AGENTS.md`; `Package.swift` | `arch -arm64 /bin/zsh -lc 'mise run test'` — passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4`; `344aabe` |
-| 11 | complete | `impl-plans/gateway-sdk-kit-runtime-impl-plan-2026-09-04.md` | `arch -arm64 /bin/zsh -lc 'mise run build && mise run test && mise run lint'` — passed, 211 tests and SwiftLint 0; `wc -l Sources/GatewaySDKKit/*.swift Sources/GatewaySDKKit/GraphQL/*.swift Tests/GatewaySDKKitTests/*.swift` — maximum 705; `rg -n -i 'inliner|GraphQLVariableInliner|GraphQLLiteralRenderer' Sources Tests README.md AGENTS.md Package.swift` — no matches; `git diff --check 8cf47d2..HEAD && git diff --cached --check && git status --porcelain` — passed and clean after final documentation commit | none | none | `e521a93`; `344aabe`; final documentation commit recorded below |
+| 11 | complete | `impl-plans/gateway-sdk-kit-runtime-impl-plan-2026-09-04.md` | `arch -arm64 /bin/zsh -lc 'mise run build && mise run test && mise run lint'` — passed, 211 tests and SwiftLint 0; `wc -l Sources/GatewaySDKKit/*.swift Sources/GatewaySDKKit/GraphQL/*.swift Tests/GatewaySDKKitTests/*.swift` — maximum 705; `rg -n -i 'inliner|GraphQLVariableInliner|GraphQLLiteralRenderer' Sources Tests README.md AGENTS.md Package.swift` — no matches; `git diff --check 8cf47d2..HEAD && git diff --cached --check && git status --porcelain` — passed and clean after final documentation commit | none | none | `e521a93`; `344aabe`; `3ba78c3d1cd283529b78ad08c26a555972373a13` |
 
 Self-review correction (2026-09-04): the initial Task 4, 6, and 8 completion entries
 were not supported by their four focused tests. `comm-001058` required revision before
@@ -610,8 +610,14 @@ Sources/GatewaySDKKit/GraphQL/*.swift Tests/GatewaySDKKitTests/*.swift` reports 
 705-line maximum; `rg -n -i 'inliner|GraphQLVariableInliner|GraphQLLiteralRenderer'
 Sources Tests README.md AGENTS.md Package.swift` returns no matches; and
 `git diff --check 8cf47d2..HEAD && git diff --cached --check` passed. No blocker or
-design divergence remains. The final documentation commit records the clean-worktree
-check.
+design divergence remains. The final documentation commit is
+`3ba78c3d1cd283529b78ad08c26a555972373a13`; it records the clean-worktree check.
+
+Plan-evidence completion (2026-09-04): `comm-001091` required the exact final
+documentation hash and the accepted inliner-removal attribution. Task 11 records
+`3ba78c3d1cd283529b78ad08c26a555972373a13`, and Task 9 records
+`Sources/GatewaySDKKit/GatewayVariableTypeCheck.swift`; no implementation, test, or
+design divergence was introduced.
 
 ## Completion criteria
 
