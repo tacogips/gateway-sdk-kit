@@ -75,6 +75,11 @@ public struct GatewayEnvelope: Codable, Sendable, Equatable {
     data = Self.member(root["data"])
     if case .array(let entries) = root["errors"] {
       errors = entries.map(Self.envelopeError)
+    } else if let member = root["errors"], !member.isNull {
+      // `errors` is present but off-contract (a bare string, an object, a number).
+      // Falling through with an empty list would report a failed call as an empty
+      // success, so degrade the way unparsable output does: one error, raw text.
+      errors = [GatewayEnvelopeError(message: stdout)]
     }
     if case .object(let extensions) = root["extensions"] {
       requestId = Self.string(extensions["requestId"])

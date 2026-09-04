@@ -81,6 +81,29 @@ struct EnvelopeTests {
     #expect(envelope.rawOutput == stdout)
   }
 
+  @Test("an errors member that is present but not an array degrades to one raw-text error")
+  func shapeANonArrayErrors() {
+    // Falling through with an empty list would report a failed call as an empty success.
+    for stdout in [
+      #"{"data":null,"errors":"boom"}"#,
+      #"{"data":null,"errors":{"message":"boom"}}"#,
+      #"{"errors":7}"#
+    ] {
+      let envelope = GatewayEnvelope(parsingCLIOutput: stdout, exitCode: 1)
+      #expect(envelope.errors == [GatewayEnvelopeError(message: stdout)])
+      #expect(envelope.data == nil)
+      #expect(envelope.exitCode == 1)
+      #expect(envelope.rawOutput == stdout)
+    }
+  }
+
+  @Test("an explicitly null errors member is treated as no errors")
+  func shapeANullErrors() {
+    let envelope = GatewayEnvelope(parsingCLIOutput: #"{"data":{"a":1},"errors":null}"#, exitCode: 0)
+    #expect(envelope.errors.isEmpty)
+    #expect(envelope.data == .object(["a": .int(1)]))
+  }
+
   @Test("failure wraps a thrown error's description")
   func failure() {
     let envelope = GatewayEnvelope.failure(GatewaySDKError.unknownOperation(name: "nope"), exitCode: 2)
