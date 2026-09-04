@@ -1,0 +1,279 @@
+{
+  "provider": "gmail-gateway",
+  "tier": "reader",
+  "operations": [
+    {
+      "name": "threads",
+      "kind": "query",
+      "tier": "reader",
+      "arguments": [
+        {
+          "name": "accountId",
+          "type": "ID!",
+          "isRequired": true,
+          "description": "Mailbox account identifier."
+        },
+        {
+          "name": "first",
+          "type": "Int",
+          "isRequired": false
+        }
+      ],
+      "result": "ThreadConnection",
+      "summary": "List mail threads for an account.",
+      "isDestructive": false,
+      "domain": "mail"
+    },
+    {
+      "name": "thread",
+      "kind": "query",
+      "tier": "reader",
+      "arguments": [
+        {
+          "name": "accountId",
+          "type": "ID!",
+          "isRequired": true
+        },
+        {
+          "name": "id",
+          "type": "ID!",
+          "isRequired": true
+        }
+      ],
+      "result": "Thread",
+      "summary": "Fetch a single mail thread by identifier.",
+      "isDestructive": false,
+      "domain": "mail"
+    },
+    {
+      "name": "sendMessage",
+      "kind": "mutation",
+      "tier": "sender",
+      "arguments": [
+        {
+          "name": "accountId",
+          "type": "ID!",
+          "isRequired": true
+        },
+        {
+          "name": "input",
+          "type": "SendMessageInput!",
+          "isRequired": true,
+          "description": "Message envelope to deliver."
+        }
+      ],
+      "result": "SendMessagePayload",
+      "summary": "Send a message from the account.",
+      "isDestructive": false,
+      "domain": "mail"
+    }
+  ],
+  "types": [
+    {
+      "name": "ThreadConnection",
+      "kind": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "totalCount",
+            "type": "Int!",
+            "arguments": []
+          },
+          {
+            "name": "pageInfo",
+            "type": "PageInfo!",
+            "arguments": []
+          },
+          {
+            "name": "edges",
+            "type": "[ThreadEdge!]!",
+            "arguments": []
+          }
+        ]
+      },
+      "description": "A page of mail threads."
+    },
+    {
+      "name": "PageInfo",
+      "kind": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "hasNextPage",
+            "type": "Boolean!",
+            "arguments": []
+          },
+          {
+            "name": "endCursor",
+            "type": "String",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "ThreadEdge",
+      "kind": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "cursor",
+            "type": "String!",
+            "arguments": []
+          },
+          {
+            "name": "node",
+            "type": "Thread!",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "Thread",
+      "kind": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "id",
+            "type": "ID!",
+            "arguments": []
+          },
+          {
+            "name": "subject",
+            "type": "String",
+            "arguments": [],
+            "description": "Subject line of the thread."
+          },
+          {
+            "name": "messages",
+            "type": "[Message!]!",
+            "arguments": []
+          }
+        ]
+      },
+      "description": "A mail conversation."
+    },
+    {
+      "name": "Message",
+      "kind": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "id",
+            "type": "ID!",
+            "arguments": []
+          },
+          {
+            "name": "snippet",
+            "type": "String",
+            "arguments": []
+          },
+          {
+            "name": "direction",
+            "type": "Direction!",
+            "arguments": []
+          },
+          {
+            "name": "from",
+            "type": "EmailAddress",
+            "arguments": []
+          },
+          {
+            "name": "thread",
+            "type": "Thread!",
+            "arguments": []
+          },
+          {
+            "name": "raw",
+            "type": "String",
+            "arguments": [
+              {
+                "name": "format",
+                "type": "String!",
+                "isRequired": true
+              }
+            ],
+            "description": "Raw RFC 822 source in the requested format."
+          }
+        ]
+      }
+    },
+    {
+      "name": "EmailAddress",
+      "kind": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "address",
+            "type": "String!",
+            "arguments": []
+          },
+          {
+            "name": "name",
+            "type": "String",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "SendMessageInput",
+      "kind": {
+        "kind": "inputObject",
+        "inputFields": [
+          {
+            "name": "to",
+            "type": "[String!]!",
+            "isRequired": true,
+            "description": "Recipient addresses."
+          },
+          {
+            "name": "subject",
+            "type": "String",
+            "isRequired": false
+          },
+          {
+            "name": "direction",
+            "type": "Direction",
+            "isRequired": false
+          }
+        ]
+      },
+      "description": "Envelope accepted by sendMessage."
+    },
+    {
+      "name": "SendMessagePayload",
+      "kind": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "id",
+            "type": "ID!",
+            "arguments": []
+          },
+          {
+            "name": "sentAt",
+            "type": "DateTime",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "Direction",
+      "kind": {
+        "kind": "enumeration",
+        "values": ["INBOUND", "OUTBOUND"]
+      },
+      "description": "Direction of a message relative to the mailbox."
+    },
+    {
+      "name": "DateTime",
+      "kind": {
+        "kind": "scalar"
+      },
+      "description": "An RFC 3339 timestamp."
+    }
+  ]
+}

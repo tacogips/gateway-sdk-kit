@@ -17,7 +17,11 @@ let package = Package(
   ],
   targets: [
     .target(name: "GatewaySDKKit"),
-    .testTarget(name: "GatewaySDKKitTests", dependencies: ["GatewaySDKKit"])
+    .testTarget(
+      name: "GatewaySDKKitTests",
+      dependencies: ["GatewaySDKKit"],
+      resources: [.copy("Fixtures")]
+    )
   ],
   swiftLanguageModes: [.v6]
 )

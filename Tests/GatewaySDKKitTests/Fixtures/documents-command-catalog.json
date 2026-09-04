@@ -1,0 +1,157 @@
+{
+  "provider": "google-documents-gateway",
+  "tier": "writer",
+  "operations": [
+    {
+      "name": "values get",
+      "kind": "command",
+      "tier": "reader",
+      "arguments": [
+        {
+          "name": "spreadsheet-id",
+          "type": "ID!",
+          "isRequired": true,
+          "description": "Target spreadsheet identifier."
+        },
+        {
+          "name": "range",
+          "type": "String!",
+          "isRequired": true
+        },
+        {
+          "name": "major-dimension",
+          "type": "Dimension",
+          "isRequired": false
+        },
+        {
+          "name": "value-input",
+          "type": "ValueInput",
+          "isRequired": false,
+          "description": "Rendering options passed as JSON."
+        }
+      ],
+      "summary": "Read a range of spreadsheet values.",
+      "isDestructive": false,
+      "domain": "sheets"
+    },
+    {
+      "name": "files list",
+      "kind": "command",
+      "tier": "reader",
+      "arguments": [
+        {
+          "name": "query",
+          "type": "String",
+          "isRequired": false,
+          "description": "Drive query expression."
+        },
+        {
+          "name": "page-size",
+          "type": "Int",
+          "isRequired": false
+        },
+        {
+          "name": "drive-id",
+          "type": "ID",
+          "isRequired": false
+        },
+        {
+          "name": "fields",
+          "type": "[String!]",
+          "isRequired": false
+        }
+      ],
+      "result": "FileList",
+      "summary": "List files visible to the credential.",
+      "isDestructive": false,
+      "domain": "drive"
+    },
+    {
+      "name": "files delete",
+      "kind": "command",
+      "tier": "writer",
+      "arguments": [
+        {
+          "name": "file-id",
+          "type": "ID!",
+          "isRequired": true
+        },
+        {
+          "name": "confirm",
+          "type": "Boolean",
+          "isRequired": false,
+          "description": "Required acknowledgement for a destructive call."
+        }
+      ],
+      "summary": "Delete a file permanently.",
+      "isDestructive": true,
+      "domain": "drive"
+    }
+  ],
+  "types": [
+    {
+      "name": "FileList",
+      "kind": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "files",
+            "type": "[File!]!",
+            "arguments": []
+          },
+          {
+            "name": "nextPageToken",
+            "type": "String",
+            "arguments": []
+          }
+        ]
+      },
+      "description": "A page of Drive files."
+    },
+    {
+      "name": "File",
+      "kind": {
+        "kind": "object",
+        "fields": [
+          {
+            "name": "id",
+            "type": "ID!",
+            "arguments": []
+          },
+          {
+            "name": "name",
+            "type": "String!",
+            "arguments": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "ValueInput",
+      "kind": {
+        "kind": "inputObject",
+        "inputFields": [
+          {
+            "name": "majorDimension",
+            "type": "Dimension",
+            "isRequired": false
+          },
+          {
+            "name": "values",
+            "type": "[String!]",
+            "isRequired": false
+          }
+        ]
+      },
+      "description": "Value rendering options."
+    },
+    {
+      "name": "Dimension",
+      "kind": {
+        "kind": "enumeration",
+        "values": ["ROWS", "COLUMNS"]
+      },
+      "description": "Spreadsheet major dimension."
+    }
+  ]
+}
