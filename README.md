@@ -167,6 +167,11 @@ it comes back as `GatewayEnvelope.failure(error, exitCode: 2)`.
 print today — `{data, errors, extensions: {requestId}}` and `{ok, data, error}` — and
 turns anything else into one error carrying the raw text.
 
+Emit one shape or the other, never a mixture: a payload carrying markers from both, such
+as `errors` alongside `ok`, matches neither and degrades to a raw-text error. Facade
+authors control the producers, so this costs nothing to observe and keeps a failed call
+from ever being reported as an empty success.
+
 ### 5. Inline variables for gateways that take no variables map
 
 ```swift

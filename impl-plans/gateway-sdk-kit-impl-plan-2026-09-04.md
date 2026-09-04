@@ -584,3 +584,77 @@ unreported, which the round-4 reviewer accepted as a residual risk; under the un
 classification it is markers from both shapes, so it matches neither. The round-4 test
 assertion was updated accordingly — a strengthening (the conflict is now surfaced), not
 a weakening.
+
+## Review round 6 (2026-09-04): F15, F16, and the first probe of the catalog surface
+
+Rounds 1-5 all probed the envelope and the inliner. F15 was found by pointing hostile
+data at the *catalog* — an input surface no round had touched. That is the lesson of this
+round more than either fix.
+
+- **F15 (medium, correctness) — duplicate catalog names crashed the process.**
+  Five name-keyed lookups used `Dictionary(uniqueKeysWithValues:)`, which traps on a
+  duplicate. A catalog is runtime JSON shipped by five separate gateways, so a duplicate
+  argument or input-field name is data the kit must survive, not a programmer error; the
+  trap is uncatchable and bypasses the entire throwing-`GatewaySDKError` contract, plus
+  `GatewayEnvelope.failure`, which exists so `invoke` never throws. All five sites are now
+  `Dictionary(_:uniquingKeysWith:)`.
+
+  **First-wins, and what that does and does not mean.** The duplicate that survives in a
+  *lookup* is the first. It does not follow that later duplicates are ignored everywhere:
+  `GatewayVariableBinding.validate` iterates `operation.arguments` directly for the
+  required-argument and type-check loops, so every duplicate's constraint still applies —
+  a value passing the first spelling and failing the second is rejected. That is the
+  conservative outcome and is left as is. The two inliner sites are unreachable today
+  (`parseVariableDefinitions` rejects a duplicate declaration first) but were hardened
+  anyway, with a comment at each of the five sites saying not to restore the trapping
+  form.
+
+  **Also added to `validate()`** as defence in depth, since nothing forces a facade to
+  call it before `build()`: duplicate argument names within an operation's arguments and
+  within a field's arguments, and duplicate field names within an object and within an
+  input object, reported at the existing dotted paths. Master design 2.2 says validate()
+  reports "duplicate names" without qualification, so this is spec-compatible rather than
+  scope creep.
+- **F16 (low, correctness) — an empty default selection emitted a bare composite field.**
+  `selectionBody` funnelled both "the result is a scalar/enum/JSON leaf, so no selection
+  set is correct" and "the result is composite but its default selection came out empty"
+  into the same `.none` branch, producing a document GraphQL cannot parse. The two are now
+  distinguished: past the leaf guard the result is composite, so an empty selection throws.
+  **Branch taken: (b)** — throw `GatewaySDKError.emptySelection(operation:type:)` at build
+  time *and* report it from `validate()` at `operation.<name>.result`. The validate() half
+  is advisory rather than fatal because `.raw` can still drive such an operation, which the
+  new test pins.
+
+  **New error case.** `emptySelection(operation:type:)` is the 15th case. No existing case
+  fits: `invalidSelectionPath` is about dot paths, and reusing it would repeat the mistake
+  round 3 warned against with `malformedDocument`. Recorded here as a deliberate addition
+  to the pinned surface, consistent with the six additions already documented in design 3.
+- **Instruction 5 — `{"ok":true,"errors":[]}` keeps degrading.** No code change. The
+  residual risk stays explicitly stated, and README section 4 now tells facade authors to
+  emit one shape or the other, since they control the producers.
+
+### Surfaces probed this round
+
+Reported plainly because the review asked. Ten catalog-consuming entry points were driven
+with one hostile catalog: `validate`, `GatewayVariableTypeCheck.matches/check`,
+`GatewayDocumentBuilder.build` (default, `.fields` and `.raw`), `GatewayArgvBuilder.build`,
+`GraphQLLiteralRenderer.render`, `GraphQLVariableInliner.inline`, `sdl()`,
+`sdlFragment`, `GatewaySchemaSearch.search` (including `includeReferencedTypes`), and
+`GatewaySDK.invoke` on both paths. Six trapped before the fix; `sdl()`, `sdlFragment` and
+`search` never built a name-keyed dictionary and were already safe. `GatewaySelection.raw`
+was probed and reaches the builder's shared validation, so it trapped too and is now
+covered.
+
+Still unprobed, and stated as such rather than implied clean: catalogs that are hostile in
+ways other than duplicate names (very deep type nesting, self-referential type refs through
+lists, enormous field counts), and the SDL printer's block-string output over adversarial
+description text.
+
+Verification for F15 is the reverse of the usual neutering check: a trap cannot be caught,
+so `HostileCatalogTests` was run against a scratch copy with all five sites reverted and it
+**crashed the test process** with seven `Fatal error: Duplicate values for key` traps across
+five tests, while the three trap-free tests (sdl, search, validate) still passed. That is
+the evidence the fix is load-bearing.
+
+Gate after the fixes: `arch -arm64 /bin/zsh -lc 'swift build && swift test && swiftlint'`
+exits 0 — 202 tests in 14 suites (up from 189), 0 lint violations, no build warnings.
