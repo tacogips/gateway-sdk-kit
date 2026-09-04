@@ -21,8 +21,12 @@ public protocol GatewaySDK: Sendable {
     environment: [String: String]
   ) async -> GatewayEnvelope
 
+  /// Override this two-argument form to customise invocation; the one-argument
+  /// convenience below forwards to it.
   func invoke(_ request: GatewayOperationRequest, environment: [String: String]) async -> GatewayEnvelope
   func schemaSDL() -> String
+  /// Override this two-argument form to customise search; the one-argument convenience
+  /// below forwards to it.
   func searchSchema(
     _ pattern: String,
     options: GatewaySchemaSearch.Options
@@ -36,9 +40,19 @@ extension GatewaySDK {
 
   public func searchSchema(
     _ pattern: String,
-    options: GatewaySchemaSearch.Options = .init()
+    options: GatewaySchemaSearch.Options
   ) throws -> [GatewaySchemaSearch.Match] {
     try GatewaySchemaSearch(catalog: catalog).search(pattern, options: options)
+  }
+
+  /// Searches with default options.
+  ///
+  /// Deliberately a separate one-argument overload rather than a default argument on
+  /// the witness above: a default argument would make `sdk.searchSchema("x")` resolve
+  /// statically to this extension's body, silently skipping a conformer's override.
+  /// Forwarding through `self` dispatches via the witness table instead.
+  public func searchSchema(_ pattern: String) throws -> [GatewaySchemaSearch.Match] {
+    try searchSchema(pattern, options: .init())
   }
 
   /// Builds the request and hands it to `execute`.
@@ -49,7 +63,7 @@ extension GatewaySDK {
   /// than a thrown error, so callers have one result shape.
   public func invoke(
     _ request: GatewayOperationRequest,
-    environment: [String: String] = [:]
+    environment: [String: String]
   ) async -> GatewayEnvelope {
     do {
       if catalog.operation(named: request.operation)?.kind == .command {
@@ -66,5 +80,11 @@ extension GatewaySDK {
     } catch {
       return GatewayEnvelope.failure(error, exitCode: 2)
     }
+  }
+
+  /// Invokes with an empty environment. A separate overload for the same reason as
+  /// `searchSchema(_:)` above: it must dispatch through the witness, not shadow it.
+  public func invoke(_ request: GatewayOperationRequest) async -> GatewayEnvelope {
+    await invoke(request, environment: [:])
   }
 }

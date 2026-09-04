@@ -33,6 +33,34 @@ private final class RecordingSDK: GatewaySDK, @unchecked Sendable {
   }
 }
 
+/// A conformer that overrides both defaulted members, used to prove the one-argument
+/// convenience spellings dispatch through the witness table rather than shadowing the
+/// override with an extension default argument.
+private struct OverridingSDK: GatewaySDK {
+  let provider = "overriding-gateway"
+  let tier = "reader"
+  let catalog: GatewaySchemaCatalog
+
+  func execute(
+    document: String,
+    variables: [String: GatewayJSONValue],
+    environment: [String: String]
+  ) async -> GatewayEnvelope {
+    GatewayEnvelope(rawOutput: "unused")
+  }
+
+  func invoke(_ request: GatewayOperationRequest, environment: [String: String]) async -> GatewayEnvelope {
+    GatewayEnvelope(data: .string("overridden invoke"), rawOutput: "overridden")
+  }
+
+  func searchSchema(
+    _ pattern: String,
+    options: GatewaySchemaSearch.Options
+  ) throws -> [GatewaySchemaSearch.Match] {
+    [GatewaySchemaSearch.Match(kind: .query, name: "overridden search")]
+  }
+}
+
 @Suite("GatewaySDK protocol")
 struct GatewaySDKProtocolTests {
   @Test("the default invoke sends the built document and variables")
@@ -118,6 +146,20 @@ struct GatewaySDKProtocolTests {
     #expect(throws: GatewaySDKError.self) {
       _ = try sdk.searchSchema("[")
     }
+  }
+
+  @Test("the one-argument conveniences honour a conformer's override")
+  func conveniencesDispatchThroughTheWitness() async throws {
+    let sdk = OverridingSDK(catalog: FixtureCatalogs.gmail)
+
+    // Both spellings must reach the override, not the extension default.
+    #expect(await sdk.invoke(GatewayOperationRequest(operation: "threads")).data == .string("overridden invoke"))
+    #expect(
+      await sdk.invoke(GatewayOperationRequest(operation: "threads"), environment: [:]).data
+        == .string("overridden invoke")
+    )
+    #expect(try sdk.searchSchema("anything").map(\.name) == ["overridden search"])
+    #expect(try sdk.searchSchema("anything", options: .init()).map(\.name) == ["overridden search"])
   }
 
   @Test("provider, tier and catalog are carried as instance values")
