@@ -112,7 +112,7 @@ public struct GatewayGraphQLRuntime: Sendable {
     do {
       let result = try await resolver(root.arguments, context)
       switch GatewayGraphQLProjection.project(result, selection: root.selectionSet, type: root.operation.result!, catalog: catalog, path: [root.responseKey]) {
-      case .success(let value): return .init(key: root.responseKey, value: value)
+      case .value(let value): return .init(key: root.responseKey, value: value)
       case .failure(let error): return .init(key: root.responseKey, value: .null, error: error)
       }
     } catch let error as any GatewayResolverError {

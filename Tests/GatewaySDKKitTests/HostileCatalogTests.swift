@@ -202,6 +202,20 @@ struct HostileCatalogTests {
       #expect(catalog.validate() == [])
     }
   }
+
+  @Test("the GraphQL runtime survives duplicated catalog names")
+  func runtimeDoesNotTrap() async throws {
+    let runtime = try GatewayGraphQLRuntime(
+      catalog: Self.duplicated,
+      resolvers: [
+        "dup": { _, _ in .object(["field": .int(1)]) },
+        "takesInput": { _, _ in .object(["field": .int(1)]) }
+      ]
+    )
+    let envelope = await runtime.execute(document: "{ takesInput(input: {member: 1}) { field } }", context: .init())
+    #expect(envelope.exitCode == 0)
+    #expect(envelope.data == .object(["takesInput": .object(["field": .int(1)])]))
+  }
 }
 
 /// A conformer used only to drive `invoke`'s two paths over a hostile catalog.

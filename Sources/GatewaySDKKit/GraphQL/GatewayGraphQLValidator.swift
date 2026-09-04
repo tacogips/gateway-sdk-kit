@@ -31,7 +31,7 @@ public struct GatewayGraphQLValidator: Sendable {
     _ document: GatewayGraphQLDocument,
     variables: [String: GatewayJSONValue] = [:]
   ) throws -> ValidatedOperation {
-    try GatewayGraphQLBudget.validate(document: document, variables: variables)
+    try GatewayGraphQLBudget.validate(document: document, variables: variables, catalog: catalog)
     try directAstChecks(document)
     let kind: GatewayOperation.Kind = document.operationType == .query ? .query : .mutation
     let operations = firstWins(catalog.operations(of: kind), key: \GatewayOperation.name)
@@ -124,7 +124,17 @@ public struct GatewayGraphQLValidator: Sendable {
       let compatible = definition.type == expected || (!expected.isRequired && definition.type.unwrappingNonNull == expected)
       guard compatible else { throw error("VARIABLE_TYPE", "variable '\(name)' cannot feed \(expected.graphQLString)", path) }
     case .list(let values): for child in values { try variableCompatibility(child, expected: expected.listElementType ?? expected, definitions: definitions, path: path) }
-    case .object(let values): for (_, child) in values { try variableCompatibility(child, expected: expected, definitions: definitions, path: path) }
+    case .object(let values):
+      guard case .inputObject(let fields) = catalog.namedType(expected.namedTypeName)?.kind else {
+        for (_, child) in values { try variableCompatibility(child, expected: expected, definitions: definitions, path: path) }
+        return
+      }
+      let fieldsByName = firstWins(fields, key: \GatewayArgument.name)
+      for (name, child) in values {
+        if let field = fieldsByName[name] {
+          try variableCompatibility(child, expected: field.type, definitions: definitions, path: path)
+        }
+      }
     default: break
     }
   }
@@ -246,25 +256,31 @@ public struct GatewayGraphQLValidator: Sendable {
       for argument in selection.arguments where !names.insert(argument.name).inserted { throw error("DUPLICATE_ARGUMENT", "duplicate argument '\(argument.name)'", path) }
       for child in selection.selectionSet { try check(child, path + [child.responseKey]) }
     }
-    for selection in document.selectionSet { try check(selection, [selection.responseKey]) }
+    var rootResponseKeys: Set<String> = []
+    for selection in document.selectionSet {
+      guard rootResponseKeys.insert(selection.responseKey).inserted else {
+        throw error("DUPLICATE_ALIAS", "duplicate response key '\(selection.responseKey)'", [selection.responseKey])
+      }
+      try check(selection, [selection.responseKey])
+    }
   }
 
   private func error(_ code: String, _ message: String, _ path: [String]) -> GatewaySDKError { .validation(code: code, message: message, path: path) }
 }
 
 private enum GatewayGraphQLBudget {
-  static func validate(document: GatewayGraphQLDocument, variables: [String: GatewayJSONValue]) throws {
+  static func validate(document: GatewayGraphQLDocument, variables: [String: GatewayJSONValue], catalog: GatewaySchemaCatalog) throws {
     var selections = 0; var inputNodes = 0
-    func walkValue(_ value: GraphQLValue, depth: Int) throws {
-      guard depth <= GatewayGraphQLLimits.depth else { throw limit("depth") }
-      inputNodes += 1; guard inputNodes <= GatewayGraphQLLimits.inputValueNodes else { throw limit("inputValueNodes") }
+    func walkValue(_ value: GraphQLValue, depth: Int, path: [String]) throws {
+      guard depth <= GatewayGraphQLLimits.depth else { throw limit("depth", path) }
+      inputNodes += 1; guard inputNodes <= GatewayGraphQLLimits.inputValueNodes else { throw limit("inputValueNodes", path) }
       switch value {
       case .list(let values):
-        try container(values.count)
-        for child in values { try walkValue(child, depth: depth + 1) }
+        try container(values.count, path: path)
+        for child in values { try walkValue(child, depth: depth + 1, path: path) }
       case .object(let values):
-        try container(values.count)
-        for (_, child) in values { try walkValue(child, depth: depth + 1) }
+        try container(values.count, path: path)
+        for (_, child) in values { try walkValue(child, depth: depth + 1, path: path) }
       default: break
       }
     }
@@ -276,26 +292,39 @@ private enum GatewayGraphQLBudget {
         guard selections <= GatewayGraphQLLimits.selections else {
           throw limit("selections", path + [selection.responseKey])
         }
-        for argument in selection.arguments { try walkValue(argument.value, depth: depth) }
+        for argument in selection.arguments { try walkValue(argument.value, depth: depth, path: path + [selection.responseKey]) }
         try fields(selection.selectionSet, depth: depth + 1, path: path + [selection.responseKey], root: false)
       }
     }
     try fields(document.selectionSet, depth: 1, path: [], root: true)
-    for definition in document.variableDefinitions { if let defaultValue = definition.defaultValue { try walkValue(defaultValue, depth: 1) } }
-    for value in variables.values { try json(value, depth: 1, nodes: &inputNodes) }
+    for definition in document.variableDefinitions {
+      if let defaultValue = definition.defaultValue { try walkValue(defaultValue, depth: 1, path: []) }
+    }
+    for value in variables.values { try json(value, depth: 1, nodes: &inputNodes, path: []) }
+    for operation in catalog.operations(of: .query) + catalog.operations(of: .mutation) {
+      for argument in operation.arguments where argument.defaultValue != nil {
+        try json(argument.defaultValue!, depth: 1, nodes: &inputNodes, path: [operation.name])
+      }
+    }
+    for type in catalog.types {
+      guard case .inputObject(let fields) = type.kind else { continue }
+      for field in fields where field.defaultValue != nil {
+        try json(field.defaultValue!, depth: 1, nodes: &inputNodes, path: [type.name, field.name])
+      }
+    }
   }
-  private static func container(_ count: Int) throws { guard count <= GatewayGraphQLLimits.containerEntries else { throw limit("containerEntries") } }
-  private static func json(_ value: GatewayJSONValue, depth: Int, nodes: inout Int) throws {
-    guard depth <= GatewayGraphQLLimits.depth else { throw limit("depth") }
+  private static func container(_ count: Int, path: [String]) throws { guard count <= GatewayGraphQLLimits.containerEntries else { throw limit("containerEntries", path) } }
+  private static func json(_ value: GatewayJSONValue, depth: Int, nodes: inout Int, path: [String]) throws {
+    guard depth <= GatewayGraphQLLimits.depth else { throw limit("depth", path) }
     nodes += 1
-    guard nodes <= GatewayGraphQLLimits.inputValueNodes else { throw limit("inputValueNodes") }
+    guard nodes <= GatewayGraphQLLimits.inputValueNodes else { throw limit("inputValueNodes", path) }
     switch value {
     case .array(let values):
-      try container(values.count)
-      for child in values { try json(child, depth: depth + 1, nodes: &nodes) }
+      try container(values.count, path: path)
+      for child in values { try json(child, depth: depth + 1, nodes: &nodes, path: path) }
     case .object(let values):
-      try container(values.count)
-      for child in values.values { try json(child, depth: depth + 1, nodes: &nodes) }
+      try container(values.count, path: path)
+      for child in values.values { try json(child, depth: depth + 1, nodes: &nodes, path: path) }
     default: break
     }
   }

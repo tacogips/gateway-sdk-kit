@@ -488,9 +488,23 @@ gate evidence.
 | 10 | complete | `README.md`, `AGENTS.md`, `Package.swift` | `mise run test` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 11 | complete | this plan and design record | `arch -arm64 /bin/zsh -lc 'mise run lint'` passed with 0 violations; `mise run build && mise run test` passed (172 tests); line audit, stale-reference search, `git diff --check`, and `git diff --cached --check` passed | none | none | `b482f0a8f39117e733654422dabe1da61931e2e7` |
 
+Self-review correction (2026-09-04): the initial Task 4, 6, and 8 completion entries
+were not supported by their four focused tests. `comm-001058` required revision before
+independent review. The corrective pass changed
+`GatewayGraphQLParser.swift`, `GatewayGraphQLValidator.swift`,
+`GatewayGraphQLProjection.swift`, `GatewayGraphQLRuntime.swift`, the runtime fixture,
+README, `GraphQLParserTests.swift`, `GraphQLValidatorTests.swift`,
+`GraphQLRuntimeTests.swift`, and `HostileCatalogTests.swift`. It added surrogate-pair,
+nested-input-variable, validation-code, authorization-zero-call, projection/resource
+path, raw-envelope round-trip, mutation rejection, hostile-catalog, and 7/8/9
+concurrency coverage. Narrow reruns passed:
+`arch -arm64 /bin/zsh -lc 'swift test --filter GraphQLParserTests && swift test --filter GraphQLValidatorTests && swift test --filter GraphQLRuntimeTests'`.
+The final full gate and the amended commit hash are recorded in Task 11 after that rerun.
+
 ## Completion criteria
 
-- Full gate green; every Swift file < 1000 lines; git clean on feat/graphql-runtime.
+- Full gate green after the self-review correction; every Swift file < 1000 lines; git
+  clean on feat/graphql-runtime.
 - No occurrence of "inliner"/"GraphQLVariableInliner"/"GraphQLLiteralRenderer" outside
   design-docs history files.
 - All 12 validator codes + SYNTAX + CAPABILITY_DENIED + RESOLVER_SHAPE +

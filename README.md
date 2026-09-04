@@ -176,12 +176,11 @@ from ever being reported as an empty success.
 
 ```swift
 let resolvers: [String: GatewayGraphQLRuntime.Resolver] = [
-  "threads": { _, _ in .object(["totalCount": .int(1)]) },
-  "labels": { _, _ in .array([.object(["name": .string("Inbox")])]) }
+  "threads": { _, _ in .object(["totalCount": .int(1)]) }
 ]
 let runtime = try GatewayGraphQLRuntime(catalog: catalog, resolvers: resolvers)
 let envelope = await runtime.execute(
-  document: #"query { labels(accountId: "a1") { name } }"#,
+  document: #"query { threads(accountId: "a1") { totalCount } }"#,
   context: GatewayResolverContext(requestId: "req-1")
 )
 // envelope.data, envelope.errors, envelope.requestId, envelope.rawOutput

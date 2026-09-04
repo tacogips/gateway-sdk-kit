@@ -42,19 +42,19 @@ enum GraphQLStringDecoder {
       case "t": result.append("\t")
       case "u":
         let firstStart = raw.index(after: index)
-        guard let (first, afterFirst) = unicodeScalar(raw, at: firstStart) else { throw StringDecodeError.invalidEscape }
-        if (0xD800...0xDBFF).contains(first.value) {
+        guard let (first, afterFirst) = unicodeCodeUnit(raw, at: firstStart) else { throw StringDecodeError.invalidEscape }
+        if (0xD800...0xDBFF).contains(first) {
           guard afterFirst < raw.endIndex, raw[afterFirst] == "\\",
             raw.index(after: afterFirst) < raw.endIndex, raw[raw.index(after: afterFirst)] == "u",
-            let (second, afterSecond) = unicodeScalar(raw, at: raw.index(afterFirst, offsetBy: 2)),
-            (0xDC00...0xDFFF).contains(second.value),
-            let scalar = Unicode.Scalar(0x10000 + ((first.value - 0xD800) << 10) + (second.value - 0xDC00))
+            let (second, afterSecond) = unicodeCodeUnit(raw, at: raw.index(afterFirst, offsetBy: 2)),
+            (0xDC00...0xDFFF).contains(second),
+            let scalar = Unicode.Scalar(0x10000 + ((first - 0xD800) << 10) + (second - 0xDC00))
           else { throw StringDecodeError.invalidEscape }
           result.unicodeScalars.append(scalar)
           index = afterSecond
           continue
         }
-        guard !(0xDC00...0xDFFF).contains(first.value), let scalar = Unicode.Scalar(first.value) else {
+        guard !(0xDC00...0xDFFF).contains(first), let scalar = Unicode.Scalar(first) else {
           throw StringDecodeError.invalidEscape
         }
         result.unicodeScalars.append(scalar)
@@ -67,11 +67,10 @@ enum GraphQLStringDecoder {
     return result
   }
 
-  private static func unicodeScalar(_ text: String, at start: String.Index) -> (Unicode.Scalar, String.Index)? {
+  private static func unicodeCodeUnit(_ text: String, at start: String.Index) -> (UInt32, String.Index)? {
     guard let end = text.index(start, offsetBy: 4, limitedBy: text.endIndex), end <= text.endIndex,
-      let value = UInt32(text[start..<end], radix: 16), text.distance(from: start, to: end) == 4,
-      let scalar = Unicode.Scalar(value) else { return nil }
-    return (scalar, end)
+      let value = UInt32(text[start..<end], radix: 16), text.distance(from: start, to: end) == 4 else { return nil }
+    return (value, end)
   }
 
   private static func decodeBlock(_ raw: String) -> String {

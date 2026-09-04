@@ -1,1 +1,19 @@
-{"provider":"gmail-gateway","tier":"sender","operations":[{"name":"labels","kind":"query","tier":"reader","arguments":[{"name":"accountId","type":"ID!","isRequired":true}],"result":"[Label!]!","summary":"List labels.","isDestructive":false}],"types":[{"name":"Label","kind":{"kind":"object","fields":[{"name":"id","type":"ID!","arguments":[]},{"name":"name","type":"String!","arguments":[]}]}}]}
+{
+  "provider":"runtime-fixture","tier":"sender",
+  "operations":[
+    {"name":"threads","kind":"query","tier":"reader","arguments":[{"name":"input","type":"ThreadSearchInput!","isRequired":true}],"result":"ThreadConnection!","summary":"Search threads.","isDestructive":false},
+    {"name":"labels","kind":"query","tier":"reader","arguments":[{"name":"accountId","type":"ID!","isRequired":true}],"result":"[Label!]!","summary":"List labels.","isDestructive":false},
+    {"name":"sendMessage","kind":"mutation","tier":"sender","arguments":[{"name":"input","type":"SendMessageInput!","isRequired":true}],"result":"SendMessagePayload!","summary":"Send a message.","isDestructive":true}
+  ],
+  "types":[
+    {"name":"ThreadConnection","kind":{"kind":"object","fields":[{"name":"totalCount","type":"Int!","arguments":[]},{"name":"edges","type":"[ThreadEdge!]!","arguments":[]}]}},
+    {"name":"ThreadEdge","kind":{"kind":"object","fields":[{"name":"node","type":"Thread","arguments":[]}]}},
+    {"name":"Thread","kind":{"kind":"object","fields":[{"name":"id","type":"ID!","arguments":[]},{"name":"subject","type":"String","arguments":[]},{"name":"direction","type":"Direction","arguments":[]},{"name":"receivedAt","type":"DateTime","arguments":[]}]}},
+    {"name":"Label","kind":{"kind":"object","fields":[{"name":"id","type":"ID!","arguments":[]},{"name":"name","type":"String!","arguments":[]}]}},
+    {"name":"SendMessagePayload","kind":{"kind":"object","fields":[{"name":"messageId","type":"ID!","arguments":[]},{"name":"threadId","type":"ID","arguments":[]}]}},
+    {"name":"ThreadSearchInput","kind":{"kind":"inputObject","inputFields":[{"name":"accountId","type":"ID!","isRequired":true},{"name":"query","type":"String","isRequired":false},{"name":"direction","type":"Direction","isRequired":false},{"name":"limit","type":"Int","defaultValue":25,"isRequired":false}]}},
+    {"name":"SendMessageInput","kind":{"kind":"inputObject","inputFields":[{"name":"accountId","type":"ID!","isRequired":true},{"name":"to","type":"[String!]!","isRequired":true},{"name":"subject","type":"String","isRequired":false},{"name":"body","type":"String!","isRequired":true}]}},
+    {"name":"Direction","kind":{"kind":"enumeration","values":["INBOUND","OUTBOUND"]}},
+    {"name":"DateTime","kind":{"kind":"scalar"}}
+  ]
+}
