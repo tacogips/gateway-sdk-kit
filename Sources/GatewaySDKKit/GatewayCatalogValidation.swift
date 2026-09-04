@@ -71,12 +71,19 @@ extension GatewaySchemaCatalog {
           )
         }
       case .inputObject(let fields):
-        problems += duplicateNameProblems(fields.map(\.name), at: "\(base).fields", noun: "field")
-        problems += validateArguments(fields, at: "\(base).fields", known: knownTypeNames)
+        // `validateArguments` runs the duplicate check itself; calling it here too would
+        // report the same key twice under two different nouns, so pass the noun instead.
+        problems += validateArguments(
+          fields,
+          at: "\(base).fields",
+          known: knownTypeNames,
+          noun: "field"
+        )
       case .enumeration(let values):
         if values.isEmpty {
           problems.append(GatewaySchemaProblem(path: base, message: "enum type has no values"))
         }
+        problems += duplicateNameProblems(values, at: "\(base).values", noun: "enum value")
       }
     }
 
@@ -86,9 +93,10 @@ extension GatewaySchemaCatalog {
   private func validateArguments(
     _ arguments: [GatewayArgument],
     at base: String,
-    known: Set<String>
+    known: Set<String>,
+    noun: String = "argument"
   ) -> [GatewaySchemaProblem] {
-    var problems = duplicateNameProblems(arguments.map(\.name), at: base, noun: "argument")
+    var problems = duplicateNameProblems(arguments.map(\.name), at: base, noun: noun)
     for argument in arguments {
       let path = "\(base).\(argument.name)"
       problems += unknownTypeProblem(argument.type, at: path, known: known)

@@ -198,6 +198,9 @@ struct HostileCatalogTests {
   func validateReportsDuplicates() {
     let problems = Self.duplicated.validate()
     let duplicates = problems.filter { $0.message.hasPrefix("duplicate ") }
+    // One assertion per position the fixture carries, so the header comment above is
+    // checkable rather than aspirational. Round 6 asserted five of six and left the
+    // enum-value case unread, which is how the gap survived a round.
     #expect(duplicates.contains(
       GatewaySchemaProblem(path: "operation.dup.arguments.arg", message: "duplicate argument name 'arg'")
     ))
@@ -216,6 +219,10 @@ struct HostileCatalogTests {
     #expect(duplicates.contains(
       GatewaySchemaProblem(path: "type.DupInput.fields.member", message: "duplicate field name 'member'")
     ))
+    #expect(duplicates.contains(
+      GatewaySchemaProblem(path: "type.DupEnum.values.SAME", message: "duplicate enum value name 'SAME'")
+    ))
+    #expect(duplicates.count == 6)
   }
 
   @Test("a clean catalog reports no duplicate problems")
