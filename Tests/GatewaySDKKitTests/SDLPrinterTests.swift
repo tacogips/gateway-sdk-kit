@@ -89,7 +89,7 @@ struct SDLPrinterTests {
         """
         List mail threads for an account.
         """
-        threads(accountId: ID!, first: Int): ThreadConnection
+        threads(accountId: ID!, first: Int, direction: Direction): ThreadConnection
         """
         Fetch a single mail thread by identifier.
         """
@@ -163,7 +163,7 @@ struct SDLPrinterTests {
         """
         List mail threads for an account.
         """
-        threads(accountId: ID!, first: Int): ThreadConnection
+        threads(accountId: ID!, first: Int, direction: Direction): ThreadConnection
       }
       """#
     #expect(FixtureCatalogs.gmail.sdlFragment(for: .query, name: "threads") == expected)

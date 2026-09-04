@@ -17,6 +17,11 @@
           "name": "first",
           "type": "Int",
           "isRequired": false
+        },
+        {
+          "name": "direction",
+          "type": "Direction",
+          "isRequired": false
         }
       ],
       "result": "ThreadConnection",
