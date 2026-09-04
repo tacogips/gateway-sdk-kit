@@ -297,7 +297,7 @@ struct SDLPrinterTests {
     let blocks = tokens.filter { $0.kind == .blockString }
     #expect(blocks.count == 1)
     #expect(blocks[0].text.contains(#"\""""#))
-    #expect(try GraphQLVariableInliner.decodeStringToken(blocks[0]).contains(injection))
+    #expect(try GraphQLStringDecoder.decode(blocks[0]).contains(injection))
   }
 
   @Test("a description ending in a quote needs no padding")
@@ -309,7 +309,7 @@ struct SDLPrinterTests {
       let tokens = try GraphQLLexer.tokenize(sdl)
       let blocks = tokens.filter { $0.kind == .blockString }
       #expect(blocks.count == 1, "for \(text)")
-      #expect(try GraphQLVariableInliner.decodeStringToken(blocks[0]).hasSuffix(text), "for \(text)")
+      #expect(try GraphQLStringDecoder.decode(blocks[0]).hasSuffix(text), "for \(text)")
     }
   }
 
@@ -321,7 +321,7 @@ struct SDLPrinterTests {
     let tokens = try GraphQLLexer.tokenize(sdl)
     let blocks = tokens.filter { $0.kind == .blockString }
     #expect(blocks.count == 1)
-    #expect(try GraphQLVariableInliner.decodeStringToken(blocks[0]).contains("\"\"\""))
+    #expect(try GraphQLStringDecoder.decode(blocks[0]).contains("\"\"\""))
   }
 
   @Test("a delimiter split across a line boundary is still escaped")

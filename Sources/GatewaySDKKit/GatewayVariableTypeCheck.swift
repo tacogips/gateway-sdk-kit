@@ -1,7 +1,7 @@
 import Foundation
 
 /// The lightweight variable type check shared by the document builder, the argv
-/// builder, and the variable inliner.
+/// builder and the catalog-driven runtime.
 ///
 /// It is deliberately permissive where GraphQL itself coerces (single values against
 /// list types, ints against `Float`) and opaque for `JSON`, so a gateway keeps its own
@@ -34,8 +34,8 @@ public enum GatewayVariableTypeCheck {
     // gateway intact whatever the declared type says. The scan has to walk the whole
     // value, not just its root: `JSON` and custom scalars accept without descending, so
     // an `inf` nested in an object or array would otherwise pass validation and then be
-    // rendered bare by the non-throwing GraphQLLiteralRenderer. Scanned once here rather
-    // than inside the recursion so the walk stays linear.
+    // serialized into a gateway response. Scanned once here rather than inside the
+    // recursion so the walk stays linear.
     guard !containsNonFiniteDouble(value) else { return false }
     return matchesType(value, type, catalog)
   }

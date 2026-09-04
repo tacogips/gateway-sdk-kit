@@ -7,6 +7,7 @@ import Testing
 enum FixtureCatalogs {
   static let gmail: GatewaySchemaCatalog = load("gmail-catalog")
   static let documents: GatewaySchemaCatalog = load("documents-command-catalog")
+  static let runtime: GatewaySchemaCatalog = load("runtime-catalog")
 
   static func load(_ name: String) -> GatewaySchemaCatalog {
     guard let url = Bundle.module.url(forResource: "Fixtures/\(name)", withExtension: "json") else {

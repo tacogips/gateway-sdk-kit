@@ -1,8 +1,6 @@
 import Foundation
 
-/// Every error the kit throws. The first eight cases are the package brief's list; the
-/// remainder cover features the brief specifies without naming an error (the inliner's
-/// declared-unused / used-undeclared rules and the throwing `parse` entry points).
+/// Every error the kit throws, including structured GraphQL parse and validation errors.
 public enum GatewaySDKError: Error, Sendable, Equatable, CustomStringConvertible {
   case unknownOperation(name: String)
   case unknownVariable(operation: String, name: String)
@@ -19,6 +17,8 @@ public enum GatewaySDKError: Error, Sendable, Equatable, CustomStringConvertible
   case invalidJSON(String)
   case invalidJSONValue(String)
   case emptySelection(operation: String, type: String)
+  case syntax(message: String, line: Int, column: Int)
+  case validation(code: String, message: String, path: [String])
 
   public var description: String {
     switch self {
@@ -52,6 +52,11 @@ public enum GatewaySDKError: Error, Sendable, Equatable, CustomStringConvertible
       return "invalid JSON value: \(message)"
     case .emptySelection(let operation, let type):
       return "operation '\(operation)' returns '\(type)', which yields no selectable fields"
+    case .syntax(let message, let line, let column):
+      return "syntax error at \(line):\(column): \(message)"
+    case .validation(let code, let message, let path):
+      let location = path.isEmpty ? "" : " at \(path.joined(separator: "."))"
+      return "\(code)\(location): \(message)"
     }
   }
 }

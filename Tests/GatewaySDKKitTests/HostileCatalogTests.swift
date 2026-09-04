@@ -121,35 +121,6 @@ struct HostileCatalogTests {
     }
   }
 
-  @Test("the literal renderer survives duplicate input-object field names")
-  func literalRendererDoesNotTrap() {
-    let rendered = GraphQLLiteralRenderer.render(
-      .object(["member": .int(1)]),
-      as: .named("DupInput"),
-      catalog: Self.duplicated
-    )
-    #expect(rendered == "{member: 1}")
-  }
-
-  @Test("the inliner survives a duplicated catalog and a duplicated declaration")
-  func inlinerDoesNotTrap() {
-    let inliner = GraphQLVariableInliner(catalog: Self.duplicated)
-    #expect(throws: Never.self) {
-      do {
-        _ = try inliner.inline(
-          document: "query Q($i: DupInput) { f(i: $i) }",
-          variables: ["i": .object(["member": .int(1)])]
-        )
-      } catch is GatewaySDKError {}
-    }
-    // The document-text twin of the same hazard, which has always been guarded.
-    #expect {
-      _ = try inliner.inline(document: "query Q($a: Int, $a: Int) { f(a: $a) }", variables: [:])
-    } throws: { error in
-      error as? GatewaySDKError == .malformedDocument("variable '$a' is declared more than once")
-    }
-  }
-
   @Test("the SDL printer and fragment printer survive a duplicated catalog")
   func sdlDoesNotTrap() {
     #expect(!Self.duplicated.sdl().isEmpty)

@@ -4,7 +4,7 @@ import PackageDescription
 
 // gateway-sdk-kit is the gateway-independent half of every tacogips gateway
 // client SDK: the neutral schema catalog, SDL printing, regex schema search,
-// the operation-to-document builder, and the variable inliner. It has no
+// the operation-to-document builder, and the catalog-driven GraphQL runtime. It has no
 // dependencies and contains no gateway code, so linking it never widens a
 // gateway's capability tier or its link boundary.
 let package = Package(

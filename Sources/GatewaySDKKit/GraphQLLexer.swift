@@ -2,8 +2,7 @@ import Foundation
 
 /// One lexical token, carrying its exact range in the source string.
 ///
-/// The ranges are what makes byte-preserving rewriting possible: the inliner splices
-/// the original text rather than re-printing a parsed document.
+/// Ranges preserve source locations for parser diagnostics.
 public struct GraphQLToken: Sendable, Equatable {
   public enum Kind: Sendable, Equatable {
     case punctuator
@@ -37,9 +36,13 @@ public struct GraphQLToken: Sendable, Equatable {
 /// A GraphQL lexer covering the whole spec token grammar.
 ///
 /// Whitespace, commas and the BOM are ignored; comments are kept as tokens so the
-/// inliner can see (and preserve) them.
+/// parsers can retain source-aware comments when needed.
 public enum GraphQLLexer {
   public static func tokenize(_ source: String) throws -> [GraphQLToken] {
+    try tokenize(source, maximumTokens: nil)
+  }
+
+  static func tokenize(_ source: String, maximumTokens: Int?) throws -> [GraphQLToken] {
     var tokens: [GraphQLToken] = []
     var index = source.startIndex
 
@@ -55,11 +58,11 @@ public enum GraphQLLexer {
         while index < source.endIndex, source[index] != "\n", source[index] != "\r" {
           index = source.index(after: index)
         }
-        tokens.append(token(.comment, source, start, index))
+        try append(token(.comment, source, start, index), to: &tokens, maximum: maximumTokens, source: source)
         continue
       }
       if character == "\"" {
-        tokens.append(try lexString(source, &index))
+        try append(lexString(source, &index), to: &tokens, maximum: maximumTokens, source: source)
         continue
       }
       if character == "$" {
@@ -68,28 +71,26 @@ public enum GraphQLLexer {
         let nameStart = index
         scanName(source, &index)
         guard nameStart < index else {
-          throw GatewaySDKError.malformedDocument("expected a variable name at offset \(offset(source, start))")
+          throw syntax("expected a variable name", source: source, at: start)
         }
-        tokens.append(token(.variable, source, start, index))
+        try append(token(.variable, source, start, index), to: &tokens, maximum: maximumTokens, source: source)
         continue
       }
       if isNameStart(character) {
         let start = index
         scanName(source, &index)
-        tokens.append(token(.name, source, start, index))
+        try append(token(.name, source, start, index), to: &tokens, maximum: maximumTokens, source: source)
         continue
       }
       if character == "-" || character.isNumber {
-        tokens.append(try lexNumber(source, &index))
+        try append(lexNumber(source, &index), to: &tokens, maximum: maximumTokens, source: source)
         continue
       }
       if let punctuator = lexPunctuator(source, &index) {
-        tokens.append(punctuator)
+        try append(punctuator, to: &tokens, maximum: maximumTokens, source: source)
         continue
       }
-      throw GatewaySDKError.malformedDocument(
-        "unexpected character '\(character)' at offset \(offset(source, index))"
-      )
+      throw syntax("unexpected character '\(character)'", source: source, at: index)
     }
     return tokens
   }
@@ -112,9 +113,7 @@ public enum GraphQLLexer {
         }
         cursor = source.index(after: cursor)
       }
-      throw GatewaySDKError.malformedDocument(
-        "unterminated block string starting at offset \(offset(source, start))"
-      )
+      throw syntax("unterminated block string", source: source, at: start)
     }
 
     var cursor = source.index(after: index)
@@ -134,7 +133,7 @@ public enum GraphQLLexer {
       }
       cursor = source.index(after: cursor)
     }
-    throw GatewaySDKError.malformedDocument("unterminated string starting at offset \(offset(source, start))")
+    throw syntax("unterminated string", source: source, at: start)
   }
 
   private static func lexNumber(_ source: String, _ index: inout String.Index) throws -> GraphQLToken {
@@ -143,7 +142,7 @@ public enum GraphQLLexer {
     let digitsStart = index
     scanDigits(source, &index)
     guard digitsStart < index else {
-      throw GatewaySDKError.malformedDocument("expected digits at offset \(offset(source, start))")
+      throw syntax("expected digits", source: source, at: start)
     }
 
     var isFloat = false
@@ -153,7 +152,7 @@ public enum GraphQLLexer {
       let fractionStart = index
       scanDigits(source, &index)
       guard fractionStart < index else {
-        throw GatewaySDKError.malformedDocument("expected digits after '.' at offset \(offset(source, index))")
+        throw syntax("expected digits after '.'", source: source, at: index)
       }
     }
     if index < source.endIndex, source[index] == "e" || source[index] == "E" {
@@ -165,7 +164,7 @@ public enum GraphQLLexer {
       let exponentStart = index
       scanDigits(source, &index)
       guard exponentStart < index else {
-        throw GatewaySDKError.malformedDocument("expected exponent digits at offset \(offset(source, index))")
+        throw syntax("expected exponent digits", source: source, at: index)
       }
     }
     return token(isFloat ? .float : .int, source, start, index)
@@ -215,7 +214,44 @@ public enum GraphQLLexer {
     GraphQLToken(kind: kind, text: String(source[start..<end]), range: start..<end)
   }
 
-  private static func offset(_ source: String, _ index: String.Index) -> Int {
-    source.distance(from: source.startIndex, to: index)
+  private static func append(
+    _ token: GraphQLToken,
+    to tokens: inout [GraphQLToken],
+    maximum: Int?,
+    source: String
+  ) throws {
+    if let maximum, tokens.count >= maximum {
+      throw syntax(
+        "resource limit exceeded: tokens maximum \(maximum)", source: source, at: token.range.lowerBound
+      )
+    }
+    tokens.append(token)
+  }
+
+  private static func syntax(_ message: String, source: String, at index: String.Index) -> GatewaySDKError {
+    let position = sourcePosition(source, index)
+    return .syntax(message: message, line: position.line, column: position.column)
+  }
+
+  static func sourcePosition(_ source: String, _ index: String.Index) -> (line: Int, column: Int) {
+    var line = 1
+    var column = 1
+    var cursor = source.startIndex
+    while cursor < index {
+      if source[cursor] == "\r" {
+        line += 1
+        column = 1
+        let next = source.index(after: cursor)
+        cursor = next < index && source[next] == "\n" ? source.index(after: next) : next
+      } else if source[cursor] == "\n" {
+        line += 1
+        column = 1
+        cursor = source.index(after: cursor)
+      } else {
+        column += 1
+        cursor = source.index(after: cursor)
+      }
+    }
+    return (line, column)
   }
 }

@@ -1,6 +1,6 @@
 # gateway-sdk-kit
 
-Dependency-free Swift package holding the gateway-independent half of the tacogips gateway client SDKs: the neutral schema catalog model, SDL printing, regex schema search, the operation-to-GraphQL-document builder, the argv builder for command-style gateways, and the lexer-aware GraphQL variable inliner.
+Dependency-free Swift package holding the gateway-independent half of the tacogips gateway client SDKs: the neutral schema catalog model, SDL printing, regex schema search, the operation-to-GraphQL-document builder, the argv builder for command-style gateways, and the catalog-driven GraphQL runtime.
 
 Consumed by wrike-gateway, google-analytics-gateway, apple-gateway, gmail-gateway, and google-documents-gateway through their `<Name>GatewaySDK` facades, and by riela's gateway add-ons.
 
@@ -172,52 +172,27 @@ as `errors` alongside `ok`, matches neither and degrades to a raw-text error. Fa
 authors control the producers, so this costs nothing to observe and keeps a failed call
 from ever being reported as an empty success.
 
-### 5. Inline variables for gateways that take no variables map
+### 5. Run documents with the catalog-driven runtime
 
 ```swift
-let inliner = GraphQLVariableInliner(catalog: catalog)
-try inliner.inline(
-  document: "query Threads($accountId: ID!, $d: Direction = INBOUND) { threads(accountId: $accountId, direction: $d) { totalCount } }",
-  variables: ["accountId": .string("acct-1")]
+let resolvers: [String: GatewayGraphQLRuntime.Resolver] = [
+  "threads": { _, _ in .object(["totalCount": .int(1)]) },
+  "labels": { _, _ in .array([.object(["name": .string("Inbox")])]) }
+]
+let runtime = try GatewayGraphQLRuntime(catalog: catalog, resolvers: resolvers)
+let envelope = await runtime.execute(
+  document: #"query { labels(accountId: "a1") { name } }"#,
+  context: GatewayResolverContext(requestId: "req-1")
 )
-// query Threads { threads(accountId: "acct-1", direction: INBOUND) { totalCount } }
+// envelope.data, envelope.errors, envelope.requestId, envelope.rawOutput
 ```
 
-The rewrite validates the wrike rules (every declared variable used, every used
-variable declared, no unknown supplied variable, required variables supplied or
-defaulted, values type-checked, and every object key anywhere in a value a legal
-GraphQL Name) and then splices the original string: the variable-definition
-parenthesis is deleted and each `$var` token is replaced by its literal. Whitespace,
-comments, strings and block strings are preserved byte for byte, and `$`-looking text
-inside them is never touched. `GraphQLLexer` and `GraphQLLiteralRenderer` are public
-for callers that need the pieces directly.
-
-The object-key rule is inliner-only, and it is the one place this kit is stricter than
-its own type check. The inliner splices keys straight into GraphQL source, where they
-must be Names (`/^[_A-Za-z][_0-9A-Za-z]*$/`); a key like `page-size` would produce a
-document the gateway cannot parse, so it throws `variableTypeMismatch` instead. The
-document builder and the argv builder still carry arbitrary JSON keys unchanged — the
-builder passes variables through as a GraphQL variables map and never renders a key,
-and the argv builder JSON-encodes objects — so `validated for the builder` does not
-imply `inlinable`.
-
-```swift
-// Fine for GatewayDocumentBuilder and GatewayArgvBuilder, rejected by the inliner:
-["j": .object(["page-size": .int(50)])]
-```
-
-One semantic difference from real GraphQL variables is worth knowing: a declared, used,
-nullable variable that is neither supplied nor defaulted inlines to an explicit `null`.
-
-```swift
-try inliner.inline(document: "query Q($a: Int) { f(a: $a) }", variables: [:])
-// query Q { f(a: null) }
-```
-
-The rewrite is a token splice, so it can replace `$a` but cannot delete the surrounding
-`a: $a` pair the way an omitted GraphQL variable would. For an argument that
-distinguishes "absent" (leave unchanged) from `null` (clear) — a patch-style mutation,
-say — supply a value or give the variable a default rather than relying on omission.
+Pass a tier-limited catalog as `authorized:` to fail closed with `CAPABILITY_DENIED`
+before any resolver runs. Exit codes are `0` for success, `1` for resolver or capability
+errors, and `2` for syntax or validation errors. Fragments, directives, subscriptions,
+multiple operations, and introspection (including `__typename`) are deliberately
+rejected. Documents are limited to 256 KiB, 20,000 tokens, 1,000 selections and bounded
+input/result trees; queries run no more than eight resolvers concurrently.
 
 ## Development
 

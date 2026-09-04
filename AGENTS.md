@@ -10,7 +10,7 @@ You (the LLM model) must NOT use emojis in any output, as they may be garbled or
 
 ## Project Overview
 
-This is `gateway-sdk-kit`, a dependency-free Swift package that holds the gateway-independent half of the tacogips gateway client SDKs (wrike-gateway, google-analytics-gateway, apple-gateway, gmail-gateway, google-documents-gateway): the neutral schema catalog model, SDL printing, regex schema search, the operation-to-GraphQL-document builder, the argv builder for command-style gateways, and the lexer-aware variable inliner.
+This is `gateway-sdk-kit`, a dependency-free Swift package that holds the gateway-independent half of the tacogips gateway client SDKs (wrike-gateway, google-analytics-gateway, apple-gateway, gmail-gateway, google-documents-gateway): the neutral schema catalog model, SDL printing, regex schema search, the operation-to-GraphQL-document builder, the argv builder for command-style gateways, and the catalog-driven GraphQL runtime.
 
 It must never contain gateway-specific code or credentials handling, and it must never gain a dependency.
 
