@@ -486,7 +486,7 @@ gate evidence.
 | 8 | complete | runtime fixture/tests and hostile catalog test; deterministic concurrency, authorization, complete missing-key/scalar-object projection, mutation recorder, exact initializer failures, and every request-resource envelope with designed code and path | focused runtime suite and post-change full gate passed (208 tests, SwiftLint 0) | none | none | `12b2496`, `2d6a546`, `7913037`, `6a2dec9`, `599b240`, `c22dc27`, `56d3ac4`, `7ca7990` |
 | 9 | complete | deleted inliner/renderer/tests; `SDLPrinterTests.swift`, `HostileCatalogTests.swift`, comments | `mise run build && mise run test`; stale-reference search passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 10 | complete | `README.md`, `AGENTS.md`, `Package.swift` | `mise run test` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
-| 11 | complete | final-gate record | `arch -arm64 /bin/zsh -lc 'mise run build && mise run test && mise run lint'` passed (208 tests, SwiftLint 0); maximum 599 lines; stale-reference, diff, cached-diff, and clean-worktree checks passed | none | none | `8f400f7`, `7913037`, `b56c0ed`, `6a2dec9`, `34c3d60`, `599b240`, `c22dc27`, `56d3ac4`, `7ca7990` |
+| 11 | complete | final-gate record | `arch -arm64 /bin/zsh -lc 'mise run build && mise run test && mise run lint'` passed (208 tests, SwiftLint 0); maximum 627 lines; stale-reference, diff, cached-diff, and clean-worktree checks passed | none | none | `8f400f7`, `7913037`, `b56c0ed`, `6a2dec9`, `34c3d60`, `599b240`, `c22dc27`, `56d3ac4`, `7ca7990` |
 
 Self-review correction (2026-09-04): the initial Task 4, 6, and 8 completion entries
 were not supported by their four focused tests. `comm-001058` required revision before
