@@ -31,7 +31,11 @@ struct GraphQLValidatorTests {
       ValidationCase(code: "MISSING_VARIABLE", source: "query($id: ID!) { labels(accountId: $id) { name } }", path: [], message: "missing required variable"),
       ValidationCase(code: "VARIABLE_TYPE", source: "query($id: Int) { labels(accountId: $id) { name } }", path: ["labels"], message: "variable"),
       ValidationCase(code: "INVALID_SELECTION", source: #"{ labels(accountId: "a") { name { x } } }"#, path: ["labels", "name"], message: "leaf type"),
-      ValidationCase(code: "MULTIPLE_MUTATIONS", source: #"mutation { first: sendMessage(input: {accountId: "a", to: ["b"], body: "x"}) { messageId } second: sendMessage(input: {accountId: "a", to: ["b"], body: "x"}) { messageId } }"#, path: [], message: "one root field"),
+      ValidationCase(
+        code: "MULTIPLE_MUTATIONS",
+        source: #"mutation { first: sendMessage(input: {accountId: "a", to: ["b"], body: "x"}) { messageId } second: sendMessage(input: {accountId: "a", to: ["b"], body: "x"}) { messageId } }"#,
+        path: [], message: "one root field"
+      ),
       ValidationCase(code: "DUPLICATE_ALIAS", source: #"{ x: labels(accountId: "a") { name } x: labels(accountId: "a") { name } }"#, path: ["x"], message: "duplicate response key")
     ]
     for item in cases { try expectCode(item) }
