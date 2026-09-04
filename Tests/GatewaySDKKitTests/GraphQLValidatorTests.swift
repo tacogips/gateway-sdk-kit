@@ -79,6 +79,53 @@ struct GraphQLValidatorTests {
     }
   }
 
+  @Test("bounds recursive catalog defaults and keeps the first duplicate input field")
+  func hostileInputDefaults() throws {
+    let loopCatalog = GatewaySchemaCatalog(
+      provider: "test",
+      tier: "reader",
+      operations: [.init(
+        name: "loop",
+        kind: .query,
+        tier: "reader",
+        arguments: [.init(name: "input", type: .named("Loop"), defaultValue: .object([:]))],
+        result: .named("Label")
+      )],
+      types: [
+        .init(name: "Label", kind: .object([.init(name: "name", type: .named("String"))])),
+        .init(name: "Loop", kind: .inputObject([.init(name: "next", type: .named("Loop"), defaultValue: .object([:]))]))
+      ]
+    )
+    let loopDocument = try GatewayGraphQLParser.parse("{ loop { name } }")
+    do {
+      _ = try GatewayGraphQLValidator(catalog: loopCatalog).validate(loopDocument)
+      Issue.record("expected recursive-default failure")
+    } catch let error as GatewaySDKError {
+      guard case .validation(let code, let message, let path) = error else {
+        Issue.record("expected validation error")
+        return
+      }
+      #expect(code == "RESOURCE_LIMIT")
+      #expect(message == GatewayGraphQLLimits.message("depth", GatewayGraphQLLimits.depth))
+      #expect(path == ["loop"])
+    }
+
+    var duplicateCatalog = FixtureCatalogs.runtime
+    duplicateCatalog.operations.append(.init(
+      name: "duplicateInput",
+      kind: .query,
+      tier: "reader",
+      arguments: [.init(name: "input", type: .named("DuplicateInput"))],
+      result: .named("Label")
+    ))
+    duplicateCatalog.types.append(.init(name: "DuplicateInput", kind: .inputObject([
+      .init(name: "value", type: .named("String")),
+      .init(name: "value", type: .nonNull(.named("Int")))
+    ])))
+    let duplicateDocument = try GatewayGraphQLParser.parse("{ duplicateInput(input: {}) { name } }")
+    #expect(try GatewayGraphQLValidator(catalog: duplicateCatalog).validate(duplicateDocument).rootFields[0].arguments == ["input": .object([:])])
+  }
+
   @Test("reports each stable validation code")
   func stableCodes() throws {
     let cases = [

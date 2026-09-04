@@ -51,6 +51,14 @@ struct GraphQLLexerTests {
     #expect(tokens[1].text == "# not $a code")
   }
 
+  @Test("CRLF is one line terminator in whitespace comments and positions")
+  func crlf() throws {
+    let source = "# note\r\n{ f }\r\n"
+    let tokens = try GraphQLLexer.tokenize(source)
+    #expect(tokens.map(\.text) == ["# note", "{", "f", "}"])
+    #expect(GraphQLLexer.sourcePosition(source, tokens[2].range.lowerBound) == (2, 3))
+  }
+
   @Test("strings keep their escapes verbatim in the token text")
   func strings() throws {
     let tokens = try GraphQLLexer.tokenize(#"{ f(a: "q\"uote", b: "back\\slash", c: "é") }"#)
@@ -102,6 +110,19 @@ struct GraphQLLexerTests {
       SyntaxCase(source: "{ f(a: [1true]) }", message: "invalid number/name boundary", line: 1, column: 10)
     ]
     for item in cases { expectSyntax(item) }
+  }
+
+  @Test("quoted strings reject every raw C0 control")
+  func quotedStringControls() {
+    for value in 0...0x1F {
+      let control = String(UnicodeScalar(value)!)
+      expectSyntax(.init(
+        source: "{ f(a: \"x\(control)y\") }",
+        message: "raw control character in string",
+        line: 1,
+        column: 10
+      ))
+    }
   }
 
   @Test("an empty document yields no tokens")

@@ -191,6 +191,22 @@ struct GraphQLParserTests {
     for item in cases { expectSyntax(item.source, message: item.message, line: item.line, column: item.column) }
   }
 
+  @Test("accepts CRLF documents and aliases that begin with double underscores")
+  func crlfAndDoubleUnderscoreAlias() throws {
+    let document = try GatewayGraphQLParser.parse("# comment\r\n{ __result: fragment }\r\n")
+    #expect(document.selectionSet == [.init(alias: "__result", name: "fragment")])
+  }
+
+  @Test("reports raw string controls at their CRLF source position")
+  func rawControlPosition() {
+    expectSyntax(
+      "{\r\n  f(a: \"x\ty\")\r\n}",
+      message: "raw control character in string",
+      line: 2,
+      column: 10
+    )
+  }
+
   @Test("accepts resource maxima and rejects the first over-limit token")
   func parserResourceBoundaryMatrix() throws {
     for depth in [31, 32] { _ = try GatewayGraphQLParser.parse(nestedDocument(depth: depth)) }

@@ -211,7 +211,6 @@ private struct GraphQLDocumentParser {
 
   private mutating func selection(depth: Int) throws -> GatewayGraphQLDocument.Selection {
     let initial = try take(kind: .name)
-    if initial.text.hasPrefix("__") { throw failure("introspection is not supported", at: initial) }
     var alias: String?
     var name = initial.text
     var field = initial
@@ -221,7 +220,9 @@ private struct GraphQLDocumentParser {
       field = try take(kind: .name)
       name = field.text
     }
-    if name.hasPrefix("__") { throw failure("introspection is not supported", at: field) }
+    if ["__schema", "__type", "__typename"].contains(name) {
+      throw failure("introspection is not supported", at: field)
+    }
     let arguments = peek?.text == "(" ? try arguments() : []
     if peek?.text == "@" { throw failure("directives are not supported", at: peek) }
     let nested = peek?.text == "{" ? try selectionSet(depth: depth, root: false) : []

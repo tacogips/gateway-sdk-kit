@@ -48,14 +48,14 @@ public enum GraphQLLexer {
 
     while index < source.endIndex {
       let character = source[index]
-      if character == " " || character == "\t" || character == "\n" || character == "\r"
+      if character == " " || character == "\t" || isLineTerminator(character)
         || character == "," || character == "\u{FEFF}" {
         index = source.index(after: index)
         continue
       }
       if character == "#" {
         let start = index
-        while index < source.endIndex, source[index] != "\n", source[index] != "\r" {
+        while index < source.endIndex, !isLineTerminator(source[index]) {
           index = source.index(after: index)
         }
         try append(token(.comment, source, start, index), to: &tokens, maximum: maximumTokens, source: source)
@@ -124,7 +124,9 @@ public enum GraphQLLexer {
         cursor = source.index(after: next)
         continue
       }
-      if character == "\n" || character == "\r" { break }
+      if isC0Control(character) {
+        throw syntax("raw control character in string", source: source, at: cursor)
+      }
       if character == "\"" {
         cursor = source.index(after: cursor)
         index = cursor
@@ -194,6 +196,14 @@ public enum GraphQLLexer {
     character == "_" || (character.isASCII && character.isLetter)
   }
 
+  private static func isLineTerminator(_ character: Character) -> Bool {
+    character == "\n" || character == "\r" || character == "\r\n"
+  }
+
+  private static func isC0Control(_ character: Character) -> Bool {
+    character.unicodeScalars.contains { $0.value <= 0x1F }
+  }
+
   private static func isNameContinuation(_ character: Character) -> Bool {
     isNameStart(character) || (character.isASCII && character.isNumber)
   }
@@ -243,12 +253,7 @@ public enum GraphQLLexer {
     var column = 1
     var cursor = source.startIndex
     while cursor < index {
-      if source[cursor] == "\r" {
-        line += 1
-        column = 1
-        let next = source.index(after: cursor)
-        cursor = next < index && source[next] == "\n" ? source.index(after: next) : next
-      } else if source[cursor] == "\n" {
+      if isLineTerminator(source[cursor]) {
         line += 1
         column = 1
         cursor = source.index(after: cursor)

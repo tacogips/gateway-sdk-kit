@@ -164,6 +164,52 @@ struct GraphQLRuntimeTests {
     }
   }
 
+  @Test("executes CRLF documents and rejects raw controls before resolver invocation")
+  func crlfAndRawControls() async throws {
+    let crlfRecorder = CallRecorder()
+    let crlf = await (try makeRuntime(recorder: crlfRecorder)).execute(
+      document: "# comment\r\n{ labels(accountId: \"a\") { name } }\r\n",
+      context: .init()
+    )
+    #expect(crlf.exitCode == 0)
+    #expect(await crlfRecorder.snapshot().0 == 1)
+
+    let controlRecorder = CallRecorder()
+    let control = await (try makeRuntime(recorder: controlRecorder)).execute(
+      document: "{\r\n  labels(accountId: \"a\t\") { name }\r\n}",
+      context: .init()
+    )
+    #expect(control.exitCode == 2)
+    #expect(control.data == nil)
+    #expect(control.errors == [.init(
+      message: "syntax error at 2:23: raw control character in string",
+      code: "SYNTAX"
+    )])
+    #expect(await controlRecorder.snapshot().0 == 0)
+  }
+
+  @Test("rejects recursive defaults and honors first duplicate input fields before invocation")
+  func hostileInputCatalogs() async throws {
+    let loopRecorder = CallRecorder()
+    let loop = try recursiveDefaultRuntime(recorder: loopRecorder)
+    let loopEnvelope = await loop.execute(document: "{ loop { name } }", context: .init())
+    #expect(loopEnvelope.exitCode == 2)
+    #expect(loopEnvelope.data == nil)
+    #expect(loopEnvelope.errors == [.init(
+      message: "resource limit exceeded: depth maximum 32",
+      code: "RESOURCE_LIMIT",
+      path: ["loop"]
+    )])
+    #expect(await loopRecorder.snapshot().0 == 0)
+
+    let duplicateRecorder = CallRecorder()
+    let duplicate = try duplicateInputRuntime(recorder: duplicateRecorder)
+    let duplicateEnvelope = await duplicate.execute(document: "{ duplicateInput(input: {}) { name } }", context: .init())
+    #expect(duplicateEnvelope.exitCode == 0)
+    #expect(duplicateEnvelope.data == .object(["duplicateInput": .object(["name": .string("ok")])]))
+    #expect(await duplicateRecorder.recordedArguments() == [["input": .object([:])]])
+  }
+
   @Test("fails authorization before any resolver call")
   func deniesWithoutCall() async throws {
     let recorder = CallRecorder()
@@ -606,6 +652,55 @@ struct GraphQLRuntimeTests {
       await recorder.begin(field: "inspect", arguments: arguments)
       await recorder.end()
       return arguments["payload"] ?? .null
+    }])
+  }
+
+  private func recursiveDefaultRuntime(recorder: CallRecorder) throws -> GatewayGraphQLRuntime {
+    let catalog = GatewaySchemaCatalog(
+      provider: "test",
+      tier: "reader",
+      operations: [.init(
+        name: "loop",
+        kind: .query,
+        tier: "reader",
+        arguments: [.init(name: "input", type: .named("Loop"), defaultValue: .object([:]))],
+        result: .named("Label")
+      )],
+      types: [
+        .init(name: "Label", kind: .object([.init(name: "name", type: .named("String"))])),
+        .init(name: "Loop", kind: .inputObject([.init(name: "next", type: .named("Loop"), defaultValue: .object([:]))]))
+      ]
+    )
+    return try GatewayGraphQLRuntime(catalog: catalog, resolvers: ["loop": { arguments, _ in
+      await recorder.begin(field: "loop", arguments: arguments)
+      await recorder.end()
+      return .object(["name": .string("ok")])
+    }])
+  }
+
+  private func duplicateInputRuntime(recorder: CallRecorder) throws -> GatewayGraphQLRuntime {
+    let catalog = GatewaySchemaCatalog(
+      provider: "test",
+      tier: "reader",
+      operations: [.init(
+        name: "duplicateInput",
+        kind: .query,
+        tier: "reader",
+        arguments: [.init(name: "input", type: .named("DuplicateInput"))],
+        result: .named("Label")
+      )],
+      types: [
+        .init(name: "Label", kind: .object([.init(name: "name", type: .named("String"))])),
+        .init(name: "DuplicateInput", kind: .inputObject([
+          .init(name: "value", type: .named("String")),
+          .init(name: "value", type: .nonNull(.named("Int")))
+        ]))
+      ]
+    )
+    return try GatewayGraphQLRuntime(catalog: catalog, resolvers: ["duplicateInput": { arguments, _ in
+      await recorder.begin(field: "duplicateInput", arguments: arguments)
+      await recorder.end()
+      return .object(["name": .string("ok")])
     }])
   }
 

@@ -118,7 +118,8 @@ public enum GatewayVariableTypeCheck {
         guard let field = byName[key] else { return false }
         guard matchesType(member, field.type, catalog) else { return false }
       }
-      for field in fields where field.defaultValue == nil {
+      var seenRequiredFields: Set<String> = []
+      for field in fields where seenRequiredFields.insert(field.name).inserted && field.defaultValue == nil {
         let isRequired = field.isRequired || field.type.isRequired
         guard isRequired else { continue }
         guard let supplied = members[field.name], !supplied.isNull else { return false }

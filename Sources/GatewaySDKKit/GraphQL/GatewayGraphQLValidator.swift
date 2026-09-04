@@ -125,10 +125,18 @@ public struct GatewayGraphQLValidator: Sendable {
       case .value(let coercedValue):
         value = coercedValue
       case .absent:
-        value = argument.defaultValue.map {
-          let materialized = materialize($0, target: argument.type)
+        if let defaultValue = argument.defaultValue {
+          let materialized = try materialize(
+            defaultValue,
+            target: argument.type,
+            materializedDefaults: &materializedDefaults,
+            path: path,
+            expandingDefault: true
+          )
           materializedDefaults.append(materialized)
-          return materialized
+          value = materialized
+        } else {
+          value = nil
         }
       }
       if let value {
@@ -180,7 +188,12 @@ public struct GatewayGraphQLValidator: Sendable {
   ) throws -> GatewayGraphQLCoercion {
     if case .variable(let name) = value {
       if let supplied = variables[name] {
-        return .value(materialize(supplied, target: target, materializedDefaults: &materializedDefaults))
+        return .value(try materialize(
+          supplied,
+          target: target,
+          materializedDefaults: &materializedDefaults,
+          path: path
+        ))
       }
       if let defaultValue = definitions[name]?.defaultValue {
         return try coerce(
@@ -253,7 +266,13 @@ public struct GatewayGraphQLValidator: Sendable {
       }
       for field in firstUnique(fields, key: \GatewayArgument.name) where output[field.name] == nil {
         if let defaultValue = field.defaultValue {
-          let materialized = materialize(defaultValue, target: field.type)
+          let materialized = try materialize(
+            defaultValue,
+            target: field.type,
+            materializedDefaults: &materializedDefaults,
+            path: path,
+            expandingDefault: true
+          )
           materializedDefaults.append(materialized)
           output[field.name] = materialized
         }
@@ -261,37 +280,119 @@ public struct GatewayGraphQLValidator: Sendable {
       result = .object(output)
     case .variable: return .absent
     }
-    return .value(materialize(result, target: target, materializedDefaults: &materializedDefaults))
-  }
-
-  private func materialize(_ value: GatewayJSONValue, target: GatewayTypeRef) -> GatewayJSONValue {
-    var ignoredDefaults: [GatewayJSONValue] = []
-    return materialize(value, target: target, materializedDefaults: &ignoredDefaults)
+    return .value(try materialize(
+      result,
+      target: target,
+      materializedDefaults: &materializedDefaults,
+      path: path
+    ))
   }
 
   private func materialize(
     _ value: GatewayJSONValue,
     target: GatewayTypeRef,
-    materializedDefaults: inout [GatewayJSONValue]
-  ) -> GatewayJSONValue {
-    if case .null = value { return value }
+    materializedDefaults: inout [GatewayJSONValue],
+    path: [String],
+    expandingDefault: Bool = false
+  ) throws -> GatewayJSONValue {
+    var state = GatewayGraphQLMaterializationState()
+    return try materialize(
+      value,
+      target: target,
+      materializedDefaults: &materializedDefaults,
+      path: path,
+      depth: 1,
+      defaultTypePath: [],
+      expandingDefault: expandingDefault,
+      state: &state
+    )
+  }
+
+  private func materialize(
+    _ value: GatewayJSONValue,
+    target: GatewayTypeRef,
+    materializedDefaults: inout [GatewayJSONValue],
+    path: [String],
+    depth: Int,
+    defaultTypePath: Set<String>,
+    expandingDefault: Bool,
+    state: inout GatewayGraphQLMaterializationState
+  ) throws -> GatewayJSONValue {
+    guard depth <= GatewayGraphQLLimits.depth else { throw resourceLimit("depth", path: path) }
     if case .nonNull(let inner) = target {
-      return materialize(value, target: inner, materializedDefaults: &materializedDefaults)
+      return try materialize(
+        value,
+        target: inner,
+        materializedDefaults: &materializedDefaults,
+        path: path,
+        depth: depth,
+        defaultTypePath: defaultTypePath,
+        expandingDefault: expandingDefault,
+        state: &state
+      )
     }
+    try state.recordNode(path: path)
+    if case .null = value { return value }
     if case .list(let element) = target {
       if case .array(let members) = value {
-        return .array(members.map { materialize($0, target: element, materializedDefaults: &materializedDefaults) })
+        try resourceContainer(members.count, path: path)
+        return .array(try members.map {
+          try materialize(
+            $0,
+            target: element,
+            materializedDefaults: &materializedDefaults,
+            path: path,
+            depth: depth + 1,
+            defaultTypePath: defaultTypePath,
+            expandingDefault: expandingDefault,
+            state: &state
+          )
+        })
       }
-      return .array([materialize(value, target: element, materializedDefaults: &materializedDefaults)])
+      return .array([try materialize(
+        value,
+        target: element,
+        materializedDefaults: &materializedDefaults,
+        path: path,
+        depth: depth + 1,
+        defaultTypePath: defaultTypePath,
+        expandingDefault: expandingDefault,
+        state: &state
+      )])
     }
     if target.namedTypeName == "Float", case .int(let number) = value { return .double(Double(number)) }
     if case .inputObject(let fields) = catalog.namedType(target.namedTypeName)?.kind, case .object(let members) = value {
+      var nestedDefaultTypes = defaultTypePath
+      if expandingDefault {
+        guard nestedDefaultTypes.insert(target.namedTypeName).inserted else {
+          throw resourceLimit("depth", path: path)
+        }
+      }
+      try resourceContainer(members.count, path: path)
       var rebuilt: [String: GatewayJSONValue] = [:]
       for field in firstUnique(fields, key: \GatewayArgument.name) {
         if let member = members[field.name] {
-          rebuilt[field.name] = materialize(member, target: field.type, materializedDefaults: &materializedDefaults)
+          rebuilt[field.name] = try materialize(
+            member,
+            target: field.type,
+            materializedDefaults: &materializedDefaults,
+            path: path,
+            depth: depth + 1,
+            defaultTypePath: nestedDefaultTypes,
+            expandingDefault: false,
+            state: &state
+          )
         } else if let defaultValue = field.defaultValue {
-          let materialized = materialize(defaultValue, target: field.type)
+          let materialized = try materialize(
+            defaultValue,
+            target: field.type,
+            materializedDefaults: &materializedDefaults,
+            path: path,
+            depth: depth + 1,
+            defaultTypePath: nestedDefaultTypes,
+            expandingDefault: true,
+            state: &state
+          )
           materializedDefaults.append(materialized)
           rebuilt[field.name] = materialized
         }
@@ -299,6 +400,20 @@ public struct GatewayGraphQLValidator: Sendable {
       return .object(rebuilt)
     }
     return value
+  }
+
+  private func resourceLimit(_ name: String, path: [String]) -> GatewaySDKError {
+    error("RESOURCE_LIMIT", GatewayGraphQLLimits.message(name, name == "depth" ? GatewayGraphQLLimits.depth : GatewayGraphQLLimits.inputValueNodes), path)
+  }
+
+  private func resourceContainer(_ count: Int, path: [String]) throws {
+    guard count <= GatewayGraphQLLimits.containerEntries else {
+      throw error(
+        "RESOURCE_LIMIT",
+        GatewayGraphQLLimits.message("containerEntries", GatewayGraphQLLimits.containerEntries),
+        path
+      )
+    }
   }
 
   private func selectionCheck(_ selections: [GatewayGraphQLDocument.Selection], type: GatewayTypeRef, path: [String]) throws {
@@ -450,6 +565,21 @@ private enum GatewayGraphQLBudget {
 private enum GatewayGraphQLCoercion {
   case absent
   case value(GatewayJSONValue)
+}
+
+private struct GatewayGraphQLMaterializationState {
+  private var nodes = 0
+
+  mutating func recordNode(path: [String]) throws {
+    nodes += 1
+    guard nodes <= GatewayGraphQLLimits.inputValueNodes else {
+      throw GatewaySDKError.validation(
+        code: "RESOURCE_LIMIT",
+        message: GatewayGraphQLLimits.message("inputValueNodes", GatewayGraphQLLimits.inputValueNodes),
+        path: path
+      )
+    }
+  }
 }
 
 private func firstUnique<Value, Key: Hashable>(_ values: [Value], key: (Value) -> Key) -> [Value] {
