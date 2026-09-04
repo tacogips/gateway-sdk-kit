@@ -432,3 +432,44 @@ The round-1 F3 fix was incomplete. Round 2 closes it properly and corrects the r
 
 Gate after the fixes: `arch -arm64 /bin/zsh -lc 'swift build && swift test && swiftlint'`
 exits 0 — 173 tests in 12 suites (up from 168), 0 lint violations, no build warnings.
+
+## Review round 3 (2026-09-04): F6, F7, F8 addressed
+
+- **F6 (medium, correctness) — illegal object keys spliced into GraphQL source.**
+  `GraphQLLiteralRenderer` emits an object as `{key: value}` with the key raw, and
+  `GatewayVariableTypeCheck` accepts any object under `JSON` or a custom scalar without
+  inspecting keys. A key like `a-b`, `with space`, `1st`, or `""` therefore produced a
+  document the kit's own lexer rejects. Fixed in `GraphQLVariableInliner.validate`,
+  which now walks the effective value of each declaration — supplied value, else parsed
+  default, exactly what the splice will render — and throws before any edit is applied.
+  Reported as `variableTypeMismatch(name:expected:actual:)` per revision instruction 2:
+  the value is not representable for the declared type *at this call site*. Deliberately
+  not `malformedDocument`, which the round-2 float-default fix already uses for a
+  different meaning (the document text rather than the value), and no new enum case.
+
+  **Why this guard is inliner-local and must not move to the shared chokepoint.** This
+  is the opposite call from F5, and the reasoning is recorded in the code comment on
+  `firstIllegalObjectKey` so a later reader does not "fix" it by relocating it. A
+  non-finite double is unrepresentable on every path, so the shared
+  `GatewayVariableTypeCheck` was right for it. An object key like `page-size` is
+  perfectly valid on the other two paths: `GatewayDocumentBuilder` passes variables
+  through as a GraphQL variables map and never renders a key, and `GatewayArgvBuilder`
+  routes objects through `jsonString()` where any key is legal. Moving the guard to the
+  shared check would be a real regression for both. Pinned by
+  `otherPathsKeepArbitraryKeys`, which asserts a blob with `a-b`, `with space` and `1st`
+  still round-trips through the document builder and still argv-encodes unchanged.
+- **F7 (low, correctness) — surrogate-pair escapes rejected.** `decodeStringToken` built
+  one scalar from four hex digits, so the spec-legal astral spelling `😀` threw
+  `invalid unicode escape`. The `\u` branch now reads a hex quad, and on a high surrogate
+  consumes the following `\uDC00`–`\uDFFF` escape and combines the pair, throwing only
+  when the pair is absent or out of range. A lone high surrogate, a low surrogate on its
+  own, and a non-hex quad all still throw.
+- **F8 (low, robustness) — a non-array `errors` member was silently dropped.** Shape-A
+  parsing admitted the branch on the presence of `data`/`errors` but only populated
+  `errors` from an `.array`, so `{"data":null,"errors":"boom"}` reported no errors on a
+  failed call. It now degrades the way unparsable output does: one error carrying the
+  raw stdout. An explicitly null `errors` is still treated as no errors.
+
+Gate after the fixes: `arch -arm64 /bin/zsh -lc 'swift build && swift test && swiftlint'`
+exits 0 — 183 tests in 12 suites (up from 173), 0 lint violations, no build warnings.
+Every new test was verified to fail with its fix neutered.
