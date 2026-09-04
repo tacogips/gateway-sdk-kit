@@ -186,6 +186,19 @@ literal. Whitespace, comments, strings and block strings are preserved byte for 
 and `$`-looking text inside them is never touched. `GraphQLLexer` and
 `GraphQLLiteralRenderer` are public for callers that need the pieces directly.
 
+One semantic difference from real GraphQL variables is worth knowing: a declared, used,
+nullable variable that is neither supplied nor defaulted inlines to an explicit `null`.
+
+```swift
+try inliner.inline(document: "query Q($a: Int) { f(a: $a) }", variables: [:])
+// query Q { f(a: null) }
+```
+
+The rewrite is a token splice, so it can replace `$a` but cannot delete the surrounding
+`a: $a` pair the way an omitted GraphQL variable would. For an argument that
+distinguishes "absent" (leave unchanged) from `null` (clear) — a patch-style mutation,
+say — supply a value or give the variable a default rather than relying on omission.
+
 ## Development
 
 ```bash

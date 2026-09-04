@@ -14,6 +14,15 @@ public struct GraphQLVariableInliner: Sendable {
     self.catalog = catalog
   }
 
+  /// Validates the declared variables and returns the document with every `$var`
+  /// replaced by its literal.
+  ///
+  /// A variable's value is the supplied value, else its declared default. A declared,
+  /// used, nullable variable with neither inlines to an explicit `null`: the rewrite is
+  /// a token splice, so it can replace `$var` but cannot delete the surrounding
+  /// `arg: $var` pair the way an omitted GraphQL variable would. For an argument that
+  /// distinguishes "absent" from `null` — a patch-style mutation, say — supply a value
+  /// or give the variable a default rather than relying on omission.
   public func inline(document: String, variables: [String: GatewayJSONValue]) throws -> String {
     let tokens = try GraphQLLexer.tokenize(document)
     let significant = tokens.filter { $0.kind != .comment }

@@ -187,6 +187,61 @@ struct VariableInlinerTests {
     )
   }
 
+  @Test("an enum value coerced against a list-of-enum type still renders bare")
+  func enumInListLiterals() throws {
+    // GatewayVariableTypeCheck accepts a single value against a list type (GraphQL's
+    // single-value coercion), so the renderer has to look through the list wrapper too.
+    #expect(
+      try inliner.inline(
+        document: "query Q($d: [Direction!]) { f(d: $d) }",
+        variables: ["d": .string("INBOUND")]
+      ) == "query Q { f(d: INBOUND) }"
+    )
+    #expect(
+      try inliner.inline(
+        document: "query Q($d: [Direction!]!) { f(d: $d) }",
+        variables: ["d": .array([.string("INBOUND"), .string("OUTBOUND")])]
+      ) == "query Q { f(d: [INBOUND, OUTBOUND]) }"
+    )
+    // A list of plain strings is unaffected.
+    #expect(
+      try inliner.inline(
+        document: "query Q($s: [String!]) { f(s: $s) }",
+        variables: ["s": .string("INBOUND")]
+      ) == #"query Q { f(s: "INBOUND") }"#
+    )
+  }
+
+  @Test("an input object coerced against a list-of-input type keeps its field types")
+  func inputObjectInListLiterals() throws {
+    #expect(
+      try inliner.inline(
+        document: "query Q($i: [SendMessageInput!]) { f(i: $i) }",
+        variables: ["i": .object(["to": .array([.string("a")]), "direction": .string("INBOUND")])]
+      ) == #"query Q { f(i: {direction: INBOUND, to: ["a"]}) }"#
+    )
+  }
+
+  @Test("a nullable variable with no supplied value and no default inlines to null")
+  func unsuppliedNullableInlinesNull() throws {
+    // The splice can replace `$a` but cannot delete the surrounding `a: $a` pair, so an
+    // omitted variable becomes an explicit null rather than an absent argument. Pinned
+    // here because it is a documented semantic difference from GraphQL variables.
+    #expect(
+      try inliner.inline(document: "query Q($a: Int) { f(a: $a) }", variables: [:])
+        == "query Q { f(a: null) }"
+    )
+  }
+
+  @Test("a non-finite double is rejected before it can render as inf")
+  func nonFiniteDoubleRejected() {
+    for value in [GatewayJSONValue.double(.infinity), .double(-.infinity), .double(.nan)] {
+      #expect(throws: GatewaySDKError.self) {
+        _ = try inliner.inline(document: "query Q($f: Float) { f(f: $f) }", variables: ["f": value])
+      }
+    }
+  }
+
   @Test("numbers, booleans and null render as GraphQL literals")
   func scalarLiterals() throws {
     #expect(
