@@ -70,8 +70,20 @@ public struct GatewayGraphQLValidator: Sendable {
     var validated: [ValidatedOperation.RootField] = []
     for (selection, operation) in roots {
       let path = [selection.responseKey]
-      let arguments = try rootArguments(selection, operation: operation, definitions: definitions, variables: variables, path: path)
-      inputNodes = try GatewayGraphQLBudget.validateMaterialized(arguments, startingNodes: inputNodes, path: path)
+      var materializedDefaults: [GatewayJSONValue] = []
+      let arguments = try rootArguments(
+        selection,
+        operation: operation,
+        definitions: definitions,
+        variables: variables,
+        materializedDefaults: &materializedDefaults,
+        path: path
+      )
+      inputNodes = try GatewayGraphQLBudget.validateMaterializedDefaults(
+        materializedDefaults,
+        startingNodes: inputNodes,
+        path: path
+      )
       guard let result = operation.result else { throw error("UNKNOWN_FIELD", "root field '\(selection.name)' has no GraphQL result", path) }
       try selectionCheck(selection.selectionSet, type: result, path: path)
       validated.append(.init(responseKey: selection.responseKey, name: selection.name, arguments: arguments, selectionSet: selection.selectionSet, operation: operation))
@@ -84,6 +96,7 @@ public struct GatewayGraphQLValidator: Sendable {
     operation: GatewayOperation,
     definitions: [String: GatewayGraphQLDocument.VariableDefinition],
     variables: [String: GatewayJSONValue],
+    materializedDefaults: inout [GatewayJSONValue],
     path: [String]
   ) throws -> [String: GatewayJSONValue] {
     let schema = firstWins(operation.arguments, key: \GatewayArgument.name)
@@ -97,9 +110,20 @@ public struct GatewayGraphQLValidator: Sendable {
       let value: GatewayJSONValue?
       if let provided = supplied[argument.name] {
         try variableCompatibility(provided.value, expected: argument.type, definitions: definitions, path: path)
-        value = try coerce(provided.value, target: argument.type, definitions: definitions, variables: variables, path: path)
+        value = try coerce(
+          provided.value,
+          target: argument.type,
+          definitions: definitions,
+          variables: variables,
+          materializedDefaults: &materializedDefaults,
+          path: path
+        )
       } else {
-        value = argument.defaultValue.flatMap { materialize($0, target: argument.type) }
+        value = argument.defaultValue.map {
+          let materialized = materialize($0, target: argument.type)
+          materializedDefaults.append(materialized)
+          return materialized
+        }
       }
       if let value {
         guard GatewayVariableTypeCheck.matches(value, argument.type, catalog) else {
@@ -145,11 +169,23 @@ public struct GatewayGraphQLValidator: Sendable {
     target: GatewayTypeRef,
     definitions: [String: GatewayGraphQLDocument.VariableDefinition],
     variables: [String: GatewayJSONValue],
+    materializedDefaults: inout [GatewayJSONValue],
     path: [String]
   ) throws -> GatewayJSONValue? {
     if case .variable(let name) = value {
-      if let supplied = variables[name] { return materialize(supplied, target: target) }
-      if let defaultValue = definitions[name]?.defaultValue { return try coerce(defaultValue, target: target, definitions: definitions, variables: variables, path: path) }
+      if let supplied = variables[name] {
+        return materialize(supplied, target: target, materializedDefaults: &materializedDefaults)
+      }
+      if let defaultValue = definitions[name]?.defaultValue {
+        return try coerce(
+          defaultValue,
+          target: target,
+          definitions: definitions,
+          variables: variables,
+          materializedDefaults: &materializedDefaults,
+          path: path
+        )
+      }
       return nil
     }
     let result: GatewayJSONValue
@@ -166,7 +202,16 @@ public struct GatewayGraphQLValidator: Sendable {
       result = .string(text)
     case .list(let values):
       let element = target.listElementType ?? target
-      result = .array(try values.compactMap { try coerce($0, target: element, definitions: definitions, variables: variables, path: path) })
+      result = .array(try values.compactMap {
+        try coerce(
+          $0,
+          target: element,
+          definitions: definitions,
+          variables: variables,
+          materializedDefaults: &materializedDefaults,
+          path: path
+        )
+      })
     case .object(let members):
       guard case .inputObject(let fields) = catalog.namedType(target.namedTypeName)?.kind else {
         throw error("ARGUMENT_TYPE", "object is not valid for \(target.namedTypeName)", path)
@@ -175,32 +220,58 @@ public struct GatewayGraphQLValidator: Sendable {
       var output: [String: GatewayJSONValue] = [:]
       for (name, member) in members {
         guard let field = schema[name] else { throw error("ARGUMENT_TYPE", "unknown input field '\(name)' on \(target.namedTypeName)", path) }
-        if let coerced = try coerce(member, target: field.type, definitions: definitions, variables: variables, path: path) { output[name] = coerced }
+        if let coerced = try coerce(
+          member,
+          target: field.type,
+          definitions: definitions,
+          variables: variables,
+          materializedDefaults: &materializedDefaults,
+          path: path
+        ) { output[name] = coerced }
       }
       for field in fields where output[field.name] == nil {
-        if let defaultValue = field.defaultValue { output[field.name] = materialize(defaultValue, target: field.type) }
+        if let defaultValue = field.defaultValue {
+          let materialized = materialize(defaultValue, target: field.type)
+          materializedDefaults.append(materialized)
+          output[field.name] = materialized
+        }
       }
       result = .object(output)
     case .variable: return nil
     }
-    return materialize(result, target: target)
+    return materialize(result, target: target, materializedDefaults: &materializedDefaults)
   }
 
   private func materialize(_ value: GatewayJSONValue, target: GatewayTypeRef) -> GatewayJSONValue {
+    var ignoredDefaults: [GatewayJSONValue] = []
+    return materialize(value, target: target, materializedDefaults: &ignoredDefaults)
+  }
+
+  private func materialize(
+    _ value: GatewayJSONValue,
+    target: GatewayTypeRef,
+    materializedDefaults: inout [GatewayJSONValue]
+  ) -> GatewayJSONValue {
     if case .null = value { return value }
-    if case .nonNull(let inner) = target { return materialize(value, target: inner) }
+    if case .nonNull(let inner) = target {
+      return materialize(value, target: inner, materializedDefaults: &materializedDefaults)
+    }
     if case .list(let element) = target {
-      if case .array(let members) = value { return .array(members.map { materialize($0, target: element) }) }
-      return .array([materialize(value, target: element)])
+      if case .array(let members) = value {
+        return .array(members.map { materialize($0, target: element, materializedDefaults: &materializedDefaults) })
+      }
+      return .array([materialize(value, target: element, materializedDefaults: &materializedDefaults)])
     }
     if target.namedTypeName == "Float", case .int(let number) = value { return .double(Double(number)) }
     if case .inputObject(let fields) = catalog.namedType(target.namedTypeName)?.kind, case .object(let members) = value {
       var rebuilt: [String: GatewayJSONValue] = [:]
       for field in fields {
         if let member = members[field.name] {
-          rebuilt[field.name] = materialize(member, target: field.type)
+          rebuilt[field.name] = materialize(member, target: field.type, materializedDefaults: &materializedDefaults)
         } else if let defaultValue = field.defaultValue {
-          rebuilt[field.name] = materialize(defaultValue, target: field.type)
+          let materialized = materialize(defaultValue, target: field.type)
+          materializedDefaults.append(materialized)
+          rebuilt[field.name] = materialized
         }
       }
       return .object(rebuilt)
@@ -305,9 +376,9 @@ private enum GatewayGraphQLBudget {
     for value in variables.values { try json(value, depth: 1, nodes: &inputNodes, path: []) }
     return inputNodes
   }
-  static func validateMaterialized(_ arguments: [String: GatewayJSONValue], startingNodes: Int, path: [String]) throws -> Int {
+  static func validateMaterializedDefaults(_ values: [GatewayJSONValue], startingNodes: Int, path: [String]) throws -> Int {
     var nodes = startingNodes
-    for value in arguments.values { try json(value, depth: 1, nodes: &nodes, path: path) }
+    for value in values { try json(value, depth: 1, nodes: &nodes, path: path) }
     return nodes
   }
   private static func typeDepth(_ type: GatewayTypeRef) throws {

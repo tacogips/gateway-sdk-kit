@@ -62,6 +62,26 @@ struct GraphQLValidatorTests {
     #expect(try GatewayGraphQLValidator(catalog: catalog).validate(document).rootFields.count == 1)
   }
 
+  @Test("counts supplied input once while charging only materialized defaults")
+  func inputBudgetDoesNotRescanSuppliedValues() throws {
+    var catalog = FixtureCatalogs.runtime
+    catalog.operations.append(.init(
+      name: "inspect",
+      kind: .query,
+      tier: "reader",
+      arguments: [.init(name: "payload", type: .named("JSON"))],
+      result: .named("Label")
+    ))
+    let document = try GatewayGraphQLParser.parse("query($payload: JSON) { inspect(payload: $payload) { name } }")
+    var rows = Array(repeating: GatewayJSONValue.array(Array(repeating: .int(1), count: 9)), count: 998)
+    rows.append(contentsOf: Array(repeating: .array(Array(repeating: .int(1), count: 8)), count: 2))
+    let validated = try GatewayGraphQLValidator(catalog: catalog).validate(
+      document,
+      variables: ["payload": .array(rows)]
+    )
+    #expect(validated.rootFields.count == 1)
+  }
+
   @Test("rejects direct-AST duplicates and input container overflow")
   func directAstDefenses() throws {
     let selection = GatewayGraphQLDocument.Selection(
