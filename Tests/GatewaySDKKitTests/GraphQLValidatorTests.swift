@@ -35,6 +35,69 @@ struct GraphQLValidatorTests {
     try expectCode("ARGUMENT_TYPE", #"{ threads(input: {query: "x"}) { totalCount } }"#)
   }
 
+  @Test("budgets direct type wrappers and only request materialized defaults")
+  func resourcePreflight() throws {
+    var deepType: GatewayTypeRef = .named("ID")
+    for _ in 0...GatewayGraphQLLimits.depth { deepType = .list(deepType) }
+    let deep = GatewayGraphQLDocument(
+      operationType: .query,
+      variableDefinitions: [.init(name: "unused", type: deepType)],
+      selectionSet: [.init(name: "labels", arguments: [.init(name: "accountId", value: .string("a"))], selectionSet: [.init(name: "name")])]
+    )
+    do {
+      _ = try validator.validate(deep)
+      Issue.record("expected RESOURCE_LIMIT")
+    }
+    catch let error as GatewaySDKError {
+      guard case .validation(let code, _, let path) = error else { Issue.record("expected validation error"); return }
+      #expect(code == "RESOURCE_LIMIT")
+      #expect(path == [])
+    }
+    var catalog = FixtureCatalogs.runtime
+    let defaultValue = GatewayJSONValue.array(Array(repeating: .int(1), count: GatewayGraphQLLimits.containerEntries + 1))
+    let unused = GatewayOperation(name: "unused", kind: .query, tier: "reader", arguments: [
+      .init(name: "payload", type: .list(.named("Int")), defaultValue: defaultValue)
+    ], result: .named("Label"))
+    catalog.operations.append(unused)
+    let document = try GatewayGraphQLParser.parse(#"{ labels(accountId: "a") { name } }"#)
+    #expect(try GatewayGraphQLValidator(catalog: catalog).validate(document).rootFields.count == 1)
+  }
+
+  @Test("rejects direct-AST duplicates and input container overflow")
+  func directAstDefenses() throws {
+    let selection = GatewayGraphQLDocument.Selection(
+      name: "labels", arguments: [.init(name: "accountId", value: .string("a"))], selectionSet: [.init(name: "name")]
+    )
+    let duplicateVariable = GatewayGraphQLDocument(
+      operationType: .query,
+      variableDefinitions: [.init(name: "v", type: .named("ID")), .init(name: "v", type: .named("ID"))],
+      selectionSet: [selection]
+    )
+    try expectDirectCode("DUPLICATE_VARIABLE", duplicateVariable, path: [])
+    let duplicateArgument = GatewayGraphQLDocument(operationType: .query, selectionSet: [
+      .init(name: "labels", arguments: [.init(name: "accountId", value: .string("a")), .init(name: "accountId", value: .string("b"))], selectionSet: [.init(name: "name")])
+    ])
+    try expectDirectCode("DUPLICATE_ARGUMENT", duplicateArgument, path: ["labels"])
+    for count in [GatewayGraphQLLimits.containerEntries - 1, GatewayGraphQLLimits.containerEntries, GatewayGraphQLLimits.containerEntries + 1] {
+      let argument = GatewayGraphQLDocument.Argument(name: "accountId", value: .list(Array(repeating: .string("a"), count: count)))
+      let document = GatewayGraphQLDocument(operationType: .query, selectionSet: [
+        .init(name: "labels", arguments: [argument], selectionSet: [.init(name: "name")])
+      ])
+      do {
+        _ = try validator.validate(document)
+        Issue.record("expected argument or resource result")
+      } catch let error as GatewaySDKError {
+        guard case .validation(let code, _, let path) = error else { Issue.record("expected validation error"); continue }
+        if count > GatewayGraphQLLimits.containerEntries {
+          #expect(code == "RESOURCE_LIMIT")
+          #expect(path == ["labels"])
+        } else {
+          #expect(code == "ARGUMENT_TYPE")
+        }
+      }
+    }
+  }
+
   private func expectCode(_ expected: String, _ source: String, variables: [String: GatewayJSONValue] = [:]) throws {
     let document = try GatewayGraphQLParser.parse(source)
     do {
@@ -43,6 +106,18 @@ struct GraphQLValidatorTests {
     } catch let error as GatewaySDKError {
       guard case .validation(let actual, _, _) = error else { Issue.record("expected validation error"); return }
       #expect(actual == expected)
+    }
+  }
+
+  private func expectDirectCode(_ expected: String, _ document: GatewayGraphQLDocument, path: [String]) throws {
+    do {
+      _ = try validator.validate(document)
+      Issue.record("expected \(expected)")
+    }
+    catch let error as GatewaySDKError {
+      guard case .validation(let code, _, let actualPath) = error else { Issue.record("expected validation error"); return }
+      #expect(code == expected)
+      #expect(actualPath == path)
     }
   }
 }

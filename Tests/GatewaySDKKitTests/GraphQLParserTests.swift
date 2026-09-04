@@ -3,6 +3,7 @@ import Testing
 
 @Suite("GraphQL parser")
 struct GraphQLParserTests {
+  private struct PositionCase { let source: String; let line: Int; let column: Int }
   @Test("parses variables, literals, aliases and nested selections")
   func parsesDocument() throws {
     let document = try GatewayGraphQLParser.parse(#"query Q($id: ID!, $limit: Int = 2) { t: threads(input: {accountId: $id, limit: $limit}) { edges { node { id } } } }"#)
@@ -59,5 +60,42 @@ struct GraphQLParserTests {
     for source in [#"{ labels(accountId: "\uD83D") { name } }"#, #"{ labels(accountId: "\uDE00") { name } }"#] {
       #expect(throws: GatewaySDKError.self) { _ = try GatewayGraphQLParser.parse(source) }
     }
+  }
+
+  @Test("reports exact positions for representative parser failures")
+  func reportsExactPositions() {
+    let cases = [
+      PositionCase(source: "query {\n  __schema\n}", line: 2, column: 3),
+      PositionCase(source: "query { a }\nquery { b }", line: 2, column: 1),
+      PositionCase(source: "query Q($a: Int, $a: Int) { a }", line: 1, column: 18),
+      PositionCase(source: "query { a(x: 1, x: 2) }", line: 1, column: 17)
+    ]
+    for item in cases {
+      do {
+        _ = try GatewayGraphQLParser.parse(item.source)
+        Issue.record("expected syntax failure")
+      }
+      catch let error as GatewaySDKError {
+        guard case .syntax(_, let actualLine, let actualColumn) = error else { Issue.record("expected syntax error"); continue }
+        #expect(actualLine == item.line)
+        #expect(actualColumn == item.column)
+      } catch { Issue.record("unexpected error \(error)") }
+    }
+  }
+
+  @Test("enforces byte and token boundaries")
+  func enforcesTextBoundaries() throws {
+    for bytes in [GatewayGraphQLLimits.documentBytes - 1, GatewayGraphQLLimits.documentBytes] {
+      let source = "{ a }#" + String(repeating: "x", count: bytes - 6)
+      _ = try GatewayGraphQLParser.parse(source)
+    }
+    let oversized = "{ a }#" + String(repeating: "x", count: GatewayGraphQLLimits.documentBytes - 5)
+    #expect(throws: GatewaySDKError.self) { _ = try GatewayGraphQLParser.parse(oversized) }
+    for total in [GatewayGraphQLLimits.tokens - 1, GatewayGraphQLLimits.tokens] {
+      let source = "{ a }\n" + String(repeating: "#x\n", count: total - 3)
+      _ = try GatewayGraphQLParser.parse(source)
+    }
+    let overTokens = "{ a }\n" + String(repeating: "#x\n", count: GatewayGraphQLLimits.tokens - 2)
+    #expect(throws: GatewaySDKError.self) { _ = try GatewayGraphQLParser.parse(overTokens) }
   }
 }

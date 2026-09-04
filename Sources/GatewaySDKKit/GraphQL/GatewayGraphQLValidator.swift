@@ -31,7 +31,7 @@ public struct GatewayGraphQLValidator: Sendable {
     _ document: GatewayGraphQLDocument,
     variables: [String: GatewayJSONValue] = [:]
   ) throws -> ValidatedOperation {
-    try GatewayGraphQLBudget.validate(document: document, variables: variables, catalog: catalog)
+    try GatewayGraphQLBudget.validate(document: document, variables: variables)
     try directAstChecks(document)
     let kind: GatewayOperation.Kind = document.operationType == .query ? .query : .mutation
     let operations = firstWins(catalog.operations(of: kind), key: \GatewayOperation.name)
@@ -71,6 +71,7 @@ public struct GatewayGraphQLValidator: Sendable {
     for (selection, operation) in roots {
       let path = [selection.responseKey]
       let arguments = try rootArguments(selection, operation: operation, definitions: definitions, variables: variables, path: path)
+      try GatewayGraphQLBudget.validateMaterialized(arguments, path: path)
       guard let result = operation.result else { throw error("UNKNOWN_FIELD", "root field '\(selection.name)' has no GraphQL result", path) }
       try selectionCheck(selection.selectionSet, type: result, path: path)
       validated.append(.init(responseKey: selection.responseKey, name: selection.name, arguments: arguments, selectionSet: selection.selectionSet, operation: operation))
@@ -269,7 +270,7 @@ public struct GatewayGraphQLValidator: Sendable {
 }
 
 private enum GatewayGraphQLBudget {
-  static func validate(document: GatewayGraphQLDocument, variables: [String: GatewayJSONValue], catalog: GatewaySchemaCatalog) throws {
+  static func validate(document: GatewayGraphQLDocument, variables: [String: GatewayJSONValue]) throws {
     var selections = 0; var inputNodes = 0
     func walkValue(_ value: GraphQLValue, depth: Int, path: [String]) throws {
       guard depth <= GatewayGraphQLLimits.depth else { throw limit("depth", path) }
@@ -297,19 +298,23 @@ private enum GatewayGraphQLBudget {
       }
     }
     try fields(document.selectionSet, depth: 1, path: [], root: true)
+    for definition in document.variableDefinitions { try typeDepth(definition.type) }
     for definition in document.variableDefinitions {
       if let defaultValue = definition.defaultValue { try walkValue(defaultValue, depth: 1, path: []) }
     }
     for value in variables.values { try json(value, depth: 1, nodes: &inputNodes, path: []) }
-    for operation in catalog.operations(of: .query) + catalog.operations(of: .mutation) {
-      for argument in operation.arguments where argument.defaultValue != nil {
-        try json(argument.defaultValue!, depth: 1, nodes: &inputNodes, path: [operation.name])
-      }
-    }
-    for type in catalog.types {
-      guard case .inputObject(let fields) = type.kind else { continue }
-      for field in fields where field.defaultValue != nil {
-        try json(field.defaultValue!, depth: 1, nodes: &inputNodes, path: [type.name, field.name])
+  }
+  static func validateMaterialized(_ arguments: [String: GatewayJSONValue], path: [String]) throws {
+    var nodes = 0
+    for value in arguments.values { try json(value, depth: 1, nodes: &nodes, path: path) }
+  }
+  private static func typeDepth(_ type: GatewayTypeRef) throws {
+    var stack: [(GatewayTypeRef, Int)] = [(type, 1)]
+    while let (current, depth) = stack.popLast() {
+      guard depth <= GatewayGraphQLLimits.depth else { throw limit("depth") }
+      switch current {
+      case .named: break
+      case .list(let inner), .nonNull(let inner): stack.append((inner, depth + 1))
       }
     }
   }

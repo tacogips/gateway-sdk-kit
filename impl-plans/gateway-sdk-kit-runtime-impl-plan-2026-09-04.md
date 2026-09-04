@@ -479,14 +479,14 @@ gate evidence.
 | 1 | complete | `Sources/GatewaySDKKit/GatewaySDKError.swift` | `mise run build` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 2 | complete | `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLDocument.swift` | `mise run build` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 3 | complete | parser, limits, lexer; corrective parser surrogate decoder | `mise run build`; full corrective gate passed (185 tests) | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
-| 4 | complete | parser and lexer tests; corrective supported/rejection/position matrix | `swift test --filter GraphQLParserTests`; full corrective gate passed | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
+| 4 | in progress | parser and lexer tests; exact representative positions and byte/token boundaries added | focused parser rerun passed; remaining accepted grammar/resource cases pending | acceptance matrix completion | none | pending |
 | 5 | complete | validator; corrective nested input type and resource-path accounting | `mise run build`; full corrective gate passed | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
-| 6 | complete | validator tests; corrective stable-code/input-default matrix | `swift test --filter GraphQLValidatorTests`; full corrective gate passed | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
+| 6 | in progress | validator tests; direct-AST duplicate/type-depth/default-scope and container boundaries added | focused validator rerun passed; remaining accepted matrices pending | acceptance matrix completion | none | pending |
 | 7 | complete | runtime and projection; corrective private projection result and response paths | `mise run build`; full corrective gate passed | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
-| 8 | complete | runtime fixture/tests and hostile catalog test; corrective authorization, envelope, resource-boundary, and 7/8/9 concurrency cases | `swift test --filter GraphQLRuntimeTests`; full corrective gate passed | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0`, `9cbf34f` |
+| 8 | in progress | runtime fixture/tests and hostile catalog test; deterministic barrier, result-order, and depth/node boundary cases added | focused runtime rerun passed; remaining accepted matrices pending | acceptance matrix completion | none | pending |
 | 9 | complete | deleted inliner/renderer/tests; `SDLPrinterTests.swift`, `HostileCatalogTests.swift`, comments | `mise run build && mise run test`; stale-reference search passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 10 | complete | `README.md`, `AGENTS.md`, `Package.swift` | `mise run test` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
-| 11 | complete | plan correction record | corrective `mise run build && mise run test && mise run lint` passed (185 tests, 0 violations); line audit max 480; stale search and diff checks passed; final `git status --porcelain` clean | none | none | `179258e` |
+| 11 | in progress | final-gate record | prior full gate passed (185 tests, 0 violations); rerun required after current corrective changes | Tasks 4/6/8 incomplete | none | pending |
 
 Self-review correction (2026-09-04): the initial Task 4, 6, and 8 completion entries
 were not supported by their four focused tests. `comm-001058` required revision before

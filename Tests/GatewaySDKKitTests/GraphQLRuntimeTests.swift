@@ -13,6 +13,25 @@ private actor CallRecorder {
   func snapshot() -> (Int, Int) { (calls, maximum) }
 }
 
+private actor ResolverBarrier {
+  let threshold: Int
+  private var arrivals = 0
+  private var waiters: [CheckedContinuation<Void, Never>] = []
+
+  init(threshold: Int) { self.threshold = threshold }
+
+  func wait() async {
+    arrivals += 1
+    guard arrivals < threshold else {
+      let pending = waiters
+      waiters.removeAll()
+      pending.forEach { $0.resume() }
+      return
+    }
+    await withCheckedContinuation { waiters.append($0) }
+  }
+}
+
 private struct ExpectedResolverError: GatewayResolverError {
   let code = "EXPECTED"
   let message = "expected resolver failure"
@@ -94,7 +113,11 @@ struct GraphQLRuntimeTests {
   func limitsConcurrentQueries() async throws {
     for count in [7, 8, 9] {
       let recorder = CallRecorder()
-      let runtime = try makeRuntime(recorder: recorder)
+      let barrier = ResolverBarrier(threshold: min(count, GatewayGraphQLLimits.concurrentQueryResolvers))
+      let runtime = try makeRuntime(recorder: recorder, labels: { _, _ in
+        await barrier.wait()
+        return .array([.object(["name": .string("Inbox")])])
+      })
       let selections = (0..<count).map { #"q\#($0): labels(accountId: "a") { name }"# }.joined(separator: " ")
       let envelope = await runtime.execute(document: "{ \(selections) }", context: .init())
       let snapshot = await recorder.snapshot()
@@ -102,6 +125,19 @@ struct GraphQLRuntimeTests {
       #expect(snapshot.0 == count)
       #expect(snapshot.1 == min(count, 8))
     }
+  }
+
+  @Test("keeps concurrent error order in document order")
+  func preservesErrorOrder() async throws {
+    let runtime = try makeRuntime(labels: { arguments, _ in
+      guard case .string(let id)? = arguments["accountId"] else { return .array([]) }
+      if id == "first" { try? await Task.sleep(for: .milliseconds(20)); throw ExpectedResolverError() }
+      if id == "second" { throw ExpectedResolverError() }
+      return .array([.object(["name": .string(id)])])
+    })
+    let envelope = await runtime.execute(document: #"{ first: labels(accountId: "first") { name } second: labels(accountId: "second") { name } third: labels(accountId: "third") { name } }"#, context: .init())
+    #expect(envelope.errors.map { $0.path } == [["first"], ["second"]])
+    #expect(envelope.data == .object(["first": .null, "second": .null, "third": .array([.object(["name": .string("third")])])]))
   }
 
   @Test("enforces resolver container boundaries at the selected response path")
@@ -115,6 +151,32 @@ struct GraphQLRuntimeTests {
         #expect(envelope.errors.first?.path == ["visible"])
       } else {
         #expect(envelope.exitCode == 0)
+      }
+    }
+  }
+
+  @Test("enforces resolver depth and node boundaries")
+  func resolverDepthAndNodeBoundaries() {
+    for levels in [GatewayGraphQLLimits.depth - 2, GatewayGraphQLLimits.depth - 1, GatewayGraphQLLimits.depth] {
+      var value: GatewayJSONValue = .int(1)
+      for _ in 0..<levels { value = .array([value]) }
+      let result = GatewayGraphQLProjection.project(value, selection: [], type: .named("JSON"), catalog: FixtureCatalogs.runtime, path: ["value"])
+      if levels >= GatewayGraphQLLimits.depth {
+        guard case .failure(let error) = result else { Issue.record("expected depth failure"); continue }
+        #expect(error.path == ["value"])
+      } else {
+        guard case .value = result else { Issue.record("expected accepted depth"); continue }
+      }
+    }
+    for finalCount in [988, 989, 990] {
+      let groups = Array(repeating: GatewayJSONValue.array(Array(repeating: .int(1), count: 1_000)), count: 9)
+        + [.array(Array(repeating: .int(1), count: finalCount))]
+      let result = GatewayGraphQLProjection.project(.array(groups), selection: [], type: .named("JSON"), catalog: FixtureCatalogs.runtime, path: ["value"])
+      if finalCount > 989 {
+        guard case .failure(let error) = result else { Issue.record("expected node failure"); continue }
+        #expect(error.path == ["value"])
+      } else {
+        guard case .value = result else { Issue.record("expected accepted nodes"); continue }
       }
     }
   }
