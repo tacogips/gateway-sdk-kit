@@ -369,6 +369,27 @@ struct GraphQLRuntimeTests {
       #expect(envelope.exitCode == (bytes > GatewayGraphQLLimits.documentBytes ? 2 : 0))
       #expect(await recorder.snapshot().0 == (bytes > GatewayGraphQLLimits.documentBytes ? 0 : 1))
     }
+    for tokens in [GatewayGraphQLLimits.tokens - 1, GatewayGraphQLLimits.tokens, GatewayGraphQLLimits.tokens + 1] {
+      let recorder = CallRecorder()
+      let envelope = await (try makeRuntime(recorder: recorder)).execute(document: tokenBoundedDocument(tokens), context: .init())
+      #expect(envelope.exitCode == (tokens > GatewayGraphQLLimits.tokens ? 2 : 0))
+      #expect(await recorder.snapshot().0 == (tokens > GatewayGraphQLLimits.tokens ? 0 : 1))
+      if tokens > GatewayGraphQLLimits.tokens { #expect(envelope.errors.first?.code == "SYNTAX") }
+    }
+    for count in [GatewayGraphQLLimits.selections - 1, GatewayGraphQLLimits.selections, GatewayGraphQLLimits.selections + 1] {
+      let recorder = CallRecorder()
+      let envelope = await (try makeRuntime(recorder: recorder)).execute(document: selectionBoundedDocument(count), context: .init())
+      #expect(envelope.exitCode == (count > GatewayGraphQLLimits.selections ? 2 : 0))
+      #expect(await recorder.snapshot().0 == (count > GatewayGraphQLLimits.selections ? 0 : 1))
+      if count > GatewayGraphQLLimits.selections { #expect(resourceEnvelopeCode(envelope.errors.first?.code)) }
+    }
+    for count in [GatewayGraphQLLimits.rootFields - 1, GatewayGraphQLLimits.rootFields, GatewayGraphQLLimits.rootFields + 1] {
+      let recorder = CallRecorder()
+      let envelope = await (try makeRuntime(recorder: recorder)).execute(document: rootBoundedDocument(count), context: .init())
+      #expect(envelope.exitCode == (count > GatewayGraphQLLimits.rootFields ? 2 : 0))
+      #expect(await recorder.snapshot().0 == (count > GatewayGraphQLLimits.rootFields ? 0 : count))
+      if count > GatewayGraphQLLimits.rootFields { #expect(resourceEnvelopeCode(envelope.errors.first?.code)) }
+    }
     for nodes in [9_998, 9_999, 10_000] {
       let recorder = CallRecorder()
       let envelope = await (try jsonInputRuntime(recorder)).execute(
@@ -388,6 +409,25 @@ struct GraphQLRuntimeTests {
       )
       #expect(envelope.exitCode == (count > GatewayGraphQLLimits.containerEntries ? 2 : 0))
       #expect(await recorder.snapshot().0 == (count > GatewayGraphQLLimits.containerEntries ? 0 : 1))
+    }
+    for levels in [GatewayGraphQLLimits.depth - 2, GatewayGraphQLLimits.depth - 1, GatewayGraphQLLimits.depth] {
+      let recorder = CallRecorder()
+      let envelope = await (try jsonInputRuntime(recorder)).execute(
+        document: "query($payload: JSON) { inspect(payload: $payload) }",
+        variables: ["payload": nestedJSON(levels: levels)], context: .init()
+      )
+      #expect(envelope.exitCode == (levels >= GatewayGraphQLLimits.depth ? 2 : 0))
+      #expect(await recorder.snapshot().0 == (levels >= GatewayGraphQLLimits.depth ? 0 : 1))
+      if levels >= GatewayGraphQLLimits.depth { #expect(envelope.errors.first?.code == "RESOURCE_LIMIT") }
+    }
+    for count in [GatewayGraphQLLimits.containerEntries - 1, GatewayGraphQLLimits.containerEntries, GatewayGraphQLLimits.containerEntries + 1] {
+      let recorder = CallRecorder()
+      let envelope = await (try jsonInputRuntime(recorder)).execute(
+        document: literalInputDocument(count), context: .init()
+      )
+      #expect(envelope.exitCode == (count > GatewayGraphQLLimits.containerEntries ? 2 : 0))
+      #expect(await recorder.snapshot().0 == (count > GatewayGraphQLLimits.containerEntries ? 0 : 1))
+      if count > GatewayGraphQLLimits.containerEntries { #expect(resourceEnvelopeCode(envelope.errors.first?.code)) }
     }
   }
 
@@ -453,6 +493,37 @@ struct GraphQLRuntimeTests {
   private func paddedDocument(_ bytes: Int) -> String {
     let prefix = #"{ labels(accountId: "a") { name } }#"#
     return prefix + String(repeating: "x", count: max(0, bytes - prefix.utf8.count))
+  }
+
+  private func tokenBoundedDocument(_ tokens: Int) -> String {
+    let prefix = #"{ labels(accountId: "a") { name } }"#
+    let base = (try? GraphQLLexer.tokenize(prefix).count) ?? 0
+    return prefix + String(repeating: "# token\n", count: max(0, tokens - base))
+  }
+
+  private func selectionBoundedDocument(_ count: Int) -> String {
+    let leaves = (0..<(count - 1)).map { "n\($0): name" }.joined(separator: " ")
+    return #"{ labels(accountId: "a") { \#(leaves) } }"#
+  }
+
+  private func rootBoundedDocument(_ count: Int) -> String {
+    let roots = (0..<count).map { #"r\#($0): labels(accountId: "a") { name }"# }.joined(separator: " ")
+    return "{ \(roots) }"
+  }
+
+  private func nestedJSON(levels: Int) -> GatewayJSONValue {
+    var value: GatewayJSONValue = .int(1)
+    for _ in 0..<levels { value = .array([value]) }
+    return value
+  }
+
+  private func literalInputDocument(_ count: Int) -> String {
+    let values = Array(repeating: "1", count: count).joined(separator: ",")
+    return "{ inspect(payload: [\(values)]) }"
+  }
+
+  private func resourceEnvelopeCode(_ code: String?) -> Bool {
+    code == "SYNTAX" || code == "RESOURCE_LIMIT"
   }
 
   private func jsonRows(nodes: Int) -> [GatewayJSONValue] {

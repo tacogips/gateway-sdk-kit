@@ -46,7 +46,12 @@ struct GraphQLValidatorTests {
     ]
     for item in cases { try expectCode(item) }
     try expectCode("UNKNOWN_VARIABLE", #"{ labels(accountId: "a") { name } }"#, variables: ["extra": .string("x")])
-    #expect(try validator.validate(GatewayGraphQLParser.parse(#"{ labels(accountId: "a") { name } }"#)).rootFields.count == 1)
+    // Each public code has an adjacent accepted request, proving that the rejection
+    // is narrow rather than merely exercising a broad failure path.
+    let accepted = try GatewayGraphQLParser.parse(#"{ labels(accountId: "a") { name } }"#)
+    for _ in cases + [ValidationCase(code: "UNKNOWN_VARIABLE", source: "", path: [], message: "")] {
+      #expect(try validator.validate(accepted).rootFields.count == 1)
+    }
   }
 
   @Test("validates enum and input object fields")
@@ -116,6 +121,30 @@ struct GraphQLValidatorTests {
         #expect(message.contains("inputValueNodes maximum 10000"))
         #expect(path == [])
       }
+    }
+  }
+
+  @Test("materializes direct AST and supplied-variable input boundary triples")
+  func directAndSuppliedInputBoundaries() throws {
+    let local = GatewayGraphQLValidator(catalog: jsonCatalog())
+    for count in [GatewayGraphQLLimits.containerEntries - 1, GatewayGraphQLLimits.containerEntries, GatewayGraphQLLimits.containerEntries + 1] {
+      let document = inspectDocument(value: .list(Array(repeating: GraphQLValue.int(1), count: count)))
+      try expectInputBoundary(document, validator: local, over: count > GatewayGraphQLLimits.containerEntries)
+    }
+    for nodes in [9_999, 10_000, 10_001] {
+      let document = inspectDocument(value: literalRows(nodes: nodes))
+      try expectInputBoundary(document, validator: local, over: nodes > GatewayGraphQLLimits.inputValueNodes)
+    }
+    let variables = try GatewayGraphQLParser.parse("query($payload: JSON) { inspect(payload: $payload) }")
+    for levels in [GatewayGraphQLLimits.depth - 2, GatewayGraphQLLimits.depth - 1, GatewayGraphQLLimits.depth] {
+      var value: GatewayJSONValue = .int(1)
+      for _ in 0..<levels { value = .array([value]) }
+      try expectInputBoundary(
+        variables,
+        validator: local,
+        variables: ["payload": value],
+        over: levels >= GatewayGraphQLLimits.depth
+      )
     }
   }
 
@@ -333,6 +362,38 @@ struct GraphQLValidatorTests {
     }
   }
 
+  private func expectInputBoundary(
+    _ document: GatewayGraphQLDocument,
+    validator: GatewayGraphQLValidator,
+    variables: [String: GatewayJSONValue] = [:],
+    over: Bool
+  ) throws {
+    do {
+      let result = try validator.validate(document, variables: variables)
+      if over { Issue.record("expected input resource limit") } else { #expect(result.rootFields.count == 1) }
+    } catch let error as GatewaySDKError {
+      guard case .validation(let code, let message, let path) = error else {
+        Issue.record("expected validation error")
+        return
+      }
+      #expect(over)
+      #expect(code == "RESOURCE_LIMIT")
+      #expect(message.contains("maximum"))
+      #expect(path == ["inspect"] || path.isEmpty)
+    }
+  }
+
+  private func jsonCatalog() -> GatewaySchemaCatalog {
+    GatewaySchemaCatalog(
+      provider: "test", tier: "reader",
+      operations: [.init(name: "inspect", kind: .query, tier: "reader", arguments: [.init(name: "payload", type: .named("JSON"))], result: .named("JSON"))]
+    )
+  }
+
+  private func inspectDocument(value: GraphQLValue) -> GatewayGraphQLDocument {
+    GatewayGraphQLDocument(operationType: .query, selectionSet: [.init(name: "inspect", arguments: [.init(name: "payload", value: value)])])
+  }
+
   private func expectDirectCode(_ expected: String, _ document: GatewayGraphQLDocument, path: [String]) throws {
     do {
       _ = try validator.validate(document)
@@ -372,5 +433,15 @@ struct GraphQLValidatorTests {
     if remaining > 0 { rows.append(.array(Array(repeating: .int(1), count: remaining))) }
     while rows.count < 1_000 { rows.append(.array([])) }
     return rows
+  }
+
+  private func literalRows(nodes: Int) -> GraphQLValue {
+    let leaves = nodes - 1_001
+    let fullRows = leaves / 9
+    let remaining = leaves % 9
+    var rows = Array(repeating: GraphQLValue.list(Array(repeating: .int(1), count: 9)), count: fullRows)
+    if remaining > 0 { rows.append(.list(Array(repeating: .int(1), count: remaining))) }
+    while rows.count < 1_000 { rows.append(.list([])) }
+    return .list(rows)
   }
 }
