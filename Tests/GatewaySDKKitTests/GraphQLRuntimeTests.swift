@@ -7,14 +7,17 @@ private actor CallRecorder {
   private var calls = 0
   private var inFlight = 0
   private var maximum = 0
+  private var fields: [String] = []
   private var arguments: [[String: GatewayJSONValue]] = []
 
-  func begin(arguments: [String: GatewayJSONValue]) {
+  func begin(field: String, arguments: [String: GatewayJSONValue]) {
     calls += 1; inFlight += 1; maximum = max(maximum, inFlight)
+    fields.append(field)
     self.arguments.append(arguments)
   }
   func end() { inFlight -= 1 }
   func snapshot() -> (Int, Int) { (calls, maximum) }
+  func recordedFields() -> [String] { fields }
   func recordedArguments() -> [[String: GatewayJSONValue]] { arguments }
 }
 
@@ -66,13 +69,13 @@ private struct SecretResolverError: Error, CustomStringConvertible {
 struct GraphQLRuntimeTests {
   @Test("projects aliases, lists, missing keys, and the envelope")
   func projectsResults() async throws {
-    let runtime = try makeRuntime()
+    let runtime = try makeRuntime(labels: { _, _ in .array([.object(["name": .string("Inbox")])]) })
     let envelope = await runtime.execute(
       document: #"{ labels(accountId: "a1") { title: name id } }"#,
       context: .init(requestId: "r1")
     )
     #expect(envelope.exitCode == 0)
-    #expect(envelope.data == .object(["labels": .array([.object(["title": .string("Inbox"), "id": .string("l1")])])]))
+    #expect(envelope.data == .object(["labels": .array([.object(["title": .string("Inbox"), "id": .null])])]))
     #expect(envelope.rawOutput.contains("\"requestId\":\"r1\""))
   }
 
@@ -174,10 +177,13 @@ struct GraphQLRuntimeTests {
 
   @Test("executes a single mutation and projects resolver shape failures")
   func mutationAndShapeFailure() async throws {
-    let runtime = try makeRuntime(labels: { _, _ in .object([:]) })
+    let recorder = CallRecorder()
+    let runtime = try makeRuntime(recorder: recorder, labels: { _, _ in .object([:]) })
     let mutation = await runtime.execute(document: #"mutation { sendMessage(input: {accountId: "a", to: ["b"], body: "hello"}) { messageId } }"#, context: .init())
     #expect(mutation.exitCode == 0)
     #expect(mutation.data == .object(["sendMessage": .object(["messageId": .string("m1")])]))
+    #expect(await recorder.snapshot().0 == 1)
+    #expect(await recorder.recordedFields() == ["sendMessage"])
     let malformed = await runtime.execute(document: #"{ labels(accountId: "a") { name } }"#, context: .init())
     #expect(malformed.errors.first?.code == "RESOLVER_SHAPE")
     #expect(malformed.errors.first?.path == ["labels"])
@@ -190,6 +196,15 @@ struct GraphQLRuntimeTests {
     #expect(nonFinite.exitCode == 1)
     #expect(nonFinite.data == .object(["labels": .null]))
     #expect(nonFinite.errors.first?.code == "RESOLVER_SHAPE")
+    let scalarObjectRuntime = try makeRuntime(threads: { _, _ in .string("not an object") })
+    let scalarObject = await scalarObjectRuntime.execute(
+      document: #"{ threads(input: {accountId: "a"}) { totalCount } }"#,
+      context: .init()
+    )
+    #expect(scalarObject.exitCode == 1)
+    #expect(scalarObject.data == .object(["threads": .null]))
+    #expect(scalarObject.errors.first?.code == "RESOLVER_SHAPE")
+    #expect(scalarObject.errors.first?.path == ["threads"])
   }
 
   @Test("rejects invalid mutations before calling resolvers")
@@ -456,7 +471,7 @@ struct GraphQLRuntimeTests {
     threads: @escaping GatewayGraphQLRuntime.Resolver = { _, _ in .object(["totalCount": .int(1), "edges": .array([])]) }
   ) throws -> GatewayGraphQLRuntime {
     let labelsWithRecording: GatewayGraphQLRuntime.Resolver = { arguments, context in
-      if let recorder { await recorder.begin(arguments: arguments) }
+      if let recorder { await recorder.begin(field: "labels", arguments: arguments) }
       do {
         let result = try await labels(arguments, context)
         if let recorder { await recorder.end() }
@@ -467,7 +482,7 @@ struct GraphQLRuntimeTests {
       }
     }
     let threadsWithRecording: GatewayGraphQLRuntime.Resolver = { arguments, context in
-      if let recorder { await recorder.begin(arguments: arguments) }
+      if let recorder { await recorder.begin(field: "threads", arguments: arguments) }
       do {
         let result = try await threads(arguments, context)
         if let recorder { await recorder.end() }
@@ -477,13 +492,18 @@ struct GraphQLRuntimeTests {
         throw error
       }
     }
+    let sendMessageWithRecording: GatewayGraphQLRuntime.Resolver = { arguments, _ in
+      if let recorder { await recorder.begin(field: "sendMessage", arguments: arguments) }
+      if let recorder { await recorder.end() }
+      return .object(["messageId": .string("m1"), "threadId": .string("t1")])
+    }
     return try GatewayGraphQLRuntime(
       catalog: FixtureCatalogs.runtime,
       authorized: authorized,
       resolvers: [
         "labels": labelsWithRecording,
         "threads": threadsWithRecording,
-        "sendMessage": { _, _ in .object(["messageId": .string("m1"), "threadId": .string("t1")]) }
+        "sendMessage": sendMessageWithRecording
       ]
     )
   }
@@ -502,7 +522,7 @@ struct GraphQLRuntimeTests {
       operations: [.init(name: "inspect", kind: .query, tier: "reader", arguments: [.init(name: "payload", type: .named("JSON"))], result: .named("JSON"))]
     )
     return try GatewayGraphQLRuntime(catalog: catalog, resolvers: ["inspect": { arguments, _ in
-      await recorder.begin(arguments: arguments)
+      await recorder.begin(field: "inspect", arguments: arguments)
       await recorder.end()
       return arguments["payload"] ?? .null
     }])
