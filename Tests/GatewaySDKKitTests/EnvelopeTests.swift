@@ -137,10 +137,12 @@ struct EnvelopeTests {
     #expect(second.errors == [GatewayEnvelopeError(message: withData)])
     #expect(second.data == .object(["a": .int(1)]))
 
-    // A populated errors array wins; the singular member does not add a second entry.
+    // Both a populated `errors` array and a singular `error`: markers from both shapes,
+    // so the payload matches neither and degrades. Round 4 preferred the array and left
+    // the conflict unreported; the round-5 classification reports it instead.
     let both = #"{"data":null,"errors":[{"message":"real"}],"error":{"message":"boom"}}"#
     let third = GatewayEnvelope(parsingCLIOutput: both, exitCode: 1)
-    #expect(third.errors == [GatewayEnvelopeError(message: "real")])
+    #expect(third.errors == [GatewayEnvelopeError(message: both)])
 
     // An explicitly null singular error is not a failure signal.
     let nullError = #"{"data":{"a":1},"error":null}"#
