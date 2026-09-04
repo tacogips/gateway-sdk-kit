@@ -67,6 +67,16 @@ public struct GatewayEnvelope: Codable, Sendable, Equatable {
       return
     }
 
+    if root["ok"] != nil {
+      // `ok` is present but is not a boolean (a string, a number, null). The payload is
+      // shape B in intent but not in form, so success cannot be told from failure — and
+      // falling through to shape-A parsing would leave the singular `error` member
+      // unread. Degrade rather than guess.
+      data = Self.member(root["data"])
+      errors = [GatewayEnvelopeError(message: stdout)]
+      return
+    }
+
     guard root["data"] != nil || root["errors"] != nil else {
       errors = [GatewayEnvelopeError(message: stdout)]
       return
@@ -79,6 +89,12 @@ public struct GatewayEnvelope: Codable, Sendable, Equatable {
       // `errors` is present but off-contract (a bare string, an object, a number).
       // Falling through with an empty list would report a failed call as an empty
       // success, so degrade the way unparsable output does: one error, raw text.
+      errors = [GatewayEnvelopeError(message: stdout)]
+    }
+    if errors.isEmpty, let member = root["error"], !member.isNull {
+      // A singular `error` belongs to shape B. Alongside `data`/`errors` it means the
+      // payload matches neither shape cleanly, and shape-A parsing would never read it;
+      // degrading keeps the message rather than reporting an empty success.
       errors = [GatewayEnvelopeError(message: stdout)]
     }
     if case .object(let extensions) = root["extensions"] {
