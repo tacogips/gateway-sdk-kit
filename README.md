@@ -182,9 +182,10 @@ The rewrite validates the wrike rules (every declared variable used, every used
 variable declared, no unknown supplied variable, required variables supplied or
 defaulted, values type-checked, and every object key anywhere in a value a legal
 GraphQL Name) and then splices the original string: the variable-definition
-parenthesis is deleted and each `$var` token is replaced by its literal. Whitespace, comments, strings and block strings are preserved byte for byte,
-and `$`-looking text inside them is never touched. `GraphQLLexer` and
-`GraphQLLiteralRenderer` are public for callers that need the pieces directly.
+parenthesis is deleted and each `$var` token is replaced by its literal. Whitespace,
+comments, strings and block strings are preserved byte for byte, and `$`-looking text
+inside them is never touched. `GraphQLLexer` and `GraphQLLiteralRenderer` are public
+for callers that need the pieces directly.
 
 The object-key rule is inliner-only, and it is the one place this kit is stricter than
 its own type check. The inliner splices keys straight into GraphQL source, where they

@@ -496,8 +496,15 @@ Every new test was verified to fail with its fix neutered.
   raw-text error — and with the brief's stated fallback. Nothing is lost: the raw text
   carries the message. Two refinements: a populated `errors` array wins, so the
   singular member never adds a second entry; and an explicitly null `error` is not a
-  failure signal. After this round no branch of the initializer can report a failed
-  call as an empty success.
+  failure signal.
+
+  **Correction (round 5).** This entry originally ended "After this round no branch of
+  the initializer can report a failed call as an empty success". That claim was false
+  when written — F11 and F12 disprove it — and it was made from case-by-case reasoning
+  rather than from anything the tests pinned. It is withdrawn. The invariant is now
+  asserted only to the extent `EnvelopeShapeMatrixTests` actually checks it, and the
+  first of the two refinements above was superseded: a payload carrying both a populated
+  `errors` array and a singular `error` now degrades rather than preferring the array.
 - **F10 (low, documentation) — the object-key rule was invisible to facade authors.**
   F6 added a user-visible inliner rule that lived only in a code comment and the plan.
   It is now in README section 5's rule list, followed by a short paragraph and example
@@ -510,3 +517,70 @@ Every new test was verified to fail with its fix neutered.
 Gate after the fixes: `arch -arm64 /bin/zsh -lc 'swift build && swift test && swiftlint'`
 exits 0 — 186 tests in 12 suites (up from 183), 0 lint violations, no build warnings.
 Both new envelope tests were verified to fail with the fix neutered.
+
+## Review round 5 (2026-09-04): F11-F14, and the end of the sibling-hole cycle
+
+Rounds 1 through 4 each fixed one branch of `GatewayEnvelope.init(parsingCLIOutput:)`
+or its neighbours and each left a structurally identical sibling unfixed, every one
+found by the reviewer's adversarial probing rather than by a test. Round 5 stops
+patching branches and replaces the parse with an exhaustive classification plus a
+matrix test, per the review's instruction 4.
+
+- **F11 (medium, correctness) — the shape-B branch discarded a populated `errors`
+  array.** `{"ok":true,"data":{"x":1},"errors":[{"message":"boom"}]}` returned
+  `errors == []`: the mirror image of the shape-A-carrying-`error` case fixed in round 4.
+- **F12 (low, correctness) — a non-object `error` inside the shape-B branch.** With
+  `ok:true` it was dropped entirely; with `ok:false` its text was replaced by the
+  `unknown error` placeholder.
+- **F13 (low, robustness) — `extensions.requestId` was dropped on the non-boolean-`ok`
+  degrade path** but preserved on the sibling shape-A degrade. Fixed by extracting the
+  request id (and `data`) up front, before any classification: both are diagnostics
+  independent of shape, and a degraded envelope whose message is an opaque blob is
+  exactly where a correlation id matters most.
+- **F14 (low, documentation) — a false exhaustiveness claim.** The round-4 section
+  asserted "After this round no branch of the initializer can report a failed call as an
+  empty success". F11 and F12 disprove it; it was written from case-by-case reasoning
+  rather than from anything the tests pinned. Withdrawn in place, with a correction note.
+  README line 185 re-wrapped to the surrounding paragraph width.
+
+### The structural fix
+
+`init(parsingCLIOutput:exitCode:)` no longer falls through a chain of branches. It
+extracts the shape-independent diagnostics, then classifies the payload once:
+
+- **Shape B** iff `ok` is a boolean, no shape-A `errors` is present, and `error` is
+  absent or an object.
+- **Shape A** iff `ok` is absent, no singular `error` is present, `errors` is absent or
+  an array, and at least one of `data`/`errors` is present.
+- **Everything else degrades** to one error carrying the raw stdout.
+
+`ok` treats null as present-but-uninterpretable (it is the shape discriminator);
+`errors` and `error` treat null as absent (the idiomatic GraphQL spelling for none).
+The classification makes the whole hole class unrepresentable rather than fixing its
+fifth instance: there is no longer a branch that can read one member and drop another.
+
+### The matrix
+
+`Tests/GatewaySDKKitTests/EnvelopeShapeMatrixTests.swift` walks the full cross product
+of `ok` (absent/true/false/non-boolean) x `data` (absent/null/object) x `errors`
+(absent/null/empty/populated/non-array) x `error` (absent/null/object/non-object) x
+requestId present or not — 480 payloads — asserting the (data, errors.count, message
+class, code, requestId, rawOutput, exitCode) tuple for every cell against an oracle
+written from the brief's section 7 rather than mirrored from the implementation. Two
+further tests state the invariant from both sides: every payload carrying any failure
+signal must yield a non-empty `errors`, and every well-formed payload of either
+documented shape must yield an empty one.
+
+Confidence check, since the cycle's lesson is that passing tests proved little: each of
+the five historical holes was re-introduced one at a time and the matrix caught every
+one — F8 20 failing cells, F9 110, F11 158, F12 32, F13 241. The two earliest holes had
+previously been findable only by probing.
+
+### Behaviour change recorded
+
+A payload carrying both a populated `errors` array and a singular `error` now degrades
+rather than preferring the array. Round 4 preferred the array and left the conflict
+unreported, which the round-4 reviewer accepted as a residual risk; under the uniform
+classification it is markers from both shapes, so it matches neither. The round-4 test
+assertion was updated accordingly — a strengthening (the conflict is now surfaced), not
+a weakening.
