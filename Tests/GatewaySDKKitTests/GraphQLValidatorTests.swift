@@ -158,6 +158,34 @@ struct GraphQLValidatorTests {
     #expect(try GatewayGraphQLValidator(catalog: catalog).validate(document).rootFields.count == 1)
   }
 
+  @Test("keeps validator selection depth aligned with parser limits")
+  func selectionDepthBoundary() throws {
+    let catalog = GatewaySchemaCatalog(
+      provider: "test",
+      tier: "reader",
+      operations: [.init(name: "node", kind: .query, tier: "reader", result: .named("Node"))],
+      types: [.init(name: "Node", kind: .object([
+        .init(name: "child", type: .named("Node")),
+        .init(name: "leaf", type: .named("String"))
+      ]))]
+    )
+    let local = GatewayGraphQLValidator(catalog: catalog)
+    for depth in [31, 32] {
+      #expect(try local.validate(selectionDepthDocument(depth)).rootFields.count == 1)
+    }
+    do {
+      _ = try local.validate(selectionDepthDocument(33))
+      Issue.record("expected RESOURCE_LIMIT")
+    } catch let error as GatewaySDKError {
+      guard case .validation(let code, let message, _) = error else {
+        Issue.record("expected validation error")
+        return
+      }
+      #expect(code == "RESOURCE_LIMIT")
+      #expect(message == GatewayGraphQLLimits.message("depth", GatewayGraphQLLimits.depth))
+    }
+  }
+
   @Test("counts supplied input once while charging only materialized defaults")
   func inputBudgetDoesNotRescanSuppliedValues() throws {
     var catalog = FixtureCatalogs.runtime
@@ -592,6 +620,12 @@ struct GraphQLValidatorTests {
 
   private func inspectDocument(value: GraphQLValue) -> GatewayGraphQLDocument {
     GatewayGraphQLDocument(operationType: .query, selectionSet: [.init(name: "inspect", arguments: [.init(name: "payload", value: value)])])
+  }
+
+  private func selectionDepthDocument(_ depth: Int) -> GatewayGraphQLDocument {
+    var selection = GatewayGraphQLDocument.Selection(name: "leaf")
+    for _ in 0..<(depth - 2) { selection = .init(name: "child", selectionSet: [selection]) }
+    return .init(operationType: .query, selectionSet: [.init(name: "node", selectionSet: [selection])])
   }
 
   private func expectDirectCode(_ expected: String, _ document: GatewayGraphQLDocument, path: [String]) throws {
