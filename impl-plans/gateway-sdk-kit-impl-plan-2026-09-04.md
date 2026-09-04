@@ -658,3 +658,66 @@ the evidence the fix is load-bearing.
 
 Gate after the fixes: `arch -arm64 /bin/zsh -lc 'swift build && swift test && swiftlint'`
 exits 0 — 202 tests in 14 suites (up from 189), 0 lint violations, no build warnings.
+
+## Review round 7 (2026-09-04): F17, F18, and one self-found defect
+
+- **F17 (medium, correctness) — SDL descriptions were spliced into block strings
+  unescaped.** A description containing `"""` closed the block early and the remainder
+  was parsed as SDL, so a catalog description could inject a fabricated top-level
+  definition into the schema `GatewaySDK.schemaSDL` hands an agent. Reproduced against
+  d1af0bb: the emitted document did not even survive the kit's own lexer
+  (`unterminated block string starting at offset 79`).
+
+  **Escaping rule chosen:** replace every `"""` in the description with `\"""`, the only
+  escape a GraphQL block string has. Applied to the whole text *before* the newline
+  split, so a delimiter anywhere in the text is caught regardless of line structure.
+  Deliberately not `sanitized(_:)`: mapping illegal characters to `_` is right for names
+  and wrong for prose, which it would mangle. The replacement is also idempotent-safe
+  for text that already contains `\"""` — the lexer's four-character escape check
+  restores the original either way, which the new round-trip assertions confirm.
+
+  **Trailing-quote decision:** a description ending in `"` (or `""`) needs no padding.
+  The closing delimiter always follows a newline plus indent, so no run of three quotes
+  can form across that boundary. Confirmed by execution rather than inspection —
+  `descriptionEndingInAQuote` lexes the output for three spellings and asserts the value
+  round-trips.
+- **F18 (low, correctness) — duplicate enum values were the one position the round-6
+  duplicate rules skipped**, and it was the position the suite's own header claimed to
+  cover. Added `duplicateNameProblems(values, at: "\(base).values", noun: "enum value")`
+  and extended `validateReportsDuplicates` to assert the `DupEnum` case its fixture
+  already carried.
+- **Self-found while fixing F18: input-object fields were reported twice.** Adding an
+  exact `duplicates.count` assertion — rather than only `contains` checks — immediately
+  failed at 7 instead of 6. Round 6 called `duplicateNameProblems` explicitly for
+  `.inputObject` *and* again inside `validateArguments`, so one duplicate key produced
+  two problems under conflicting nouns (`duplicate field name 'm'` and `duplicate
+  argument name 'm'` at the same path). `validateArguments` now takes a `noun` parameter
+  defaulting to `"argument"`; the redundant call is gone. This was not in the review's
+  findings; the count assertion is what surfaced it, which is the argument for asserting
+  totals and not just membership.
+
+### Unprobed-surface accounting
+
+Round 6 listed four surfaces as unprobed. All four are now closed:
+
+- **Adversarial description text** — probed by the reviewer, defective, fixed here (F17).
+- **Deep type nesting** — probed by the reviewer; crashes only at implausible depths
+  (20,000 brackets survive on the main thread, 50,000 SIGSEGVs; 1,000–3,000 on a 512 KB
+  secondary thread). Accepted as an explicit residual risk rather than fixed, since it
+  requires input no first-party gateway emits. A depth counter in `Parser.parseType`
+  would close it cheaply if the operator wants it.
+- **Self-referential type refs through lists** — probed this round and clean. A `Node`
+  with `kids: [Node]` and `grid: [[Node]]` validates to zero problems, the cycle stop
+  yields `query Root { root { id } }`, and `sdl()` and `search(includeReferencedTypes:)`
+  both complete normally.
+- **Very large field counts** — probed this round and clean. An operation with 2,000
+  arguments returning an object with 5,000 fields validates, prints 86 KB of SDL, builds
+  a 49 KB document and searches, all in 0.03 s total. No quadratic blow-up observed.
+
+Nothing on the round-6 list is left open. The surfaces that remain untested are the ones
+never claimed: Linux execution (no CI available) and concurrent use of a single catalog
+across threads.
+
+Gate after the fixes: `arch -arm64 /bin/zsh -lc 'swift build && swift test && swiftlint'`
+exits 0 — 207 tests in 14 suites (up from 202), 0 lint violations, no build warnings.
+Every new assertion was verified to fail with its fix neutered.
