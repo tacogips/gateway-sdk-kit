@@ -93,6 +93,39 @@ struct ArgvBuilderTests {
     }
   }
 
+  @Test("a non-finite double nested in a JSON-typed flag is rejected too")
+  func nestedNonFiniteFlagRejected() throws {
+    // The list branch renders each element through scalarText, which never reaches the
+    // throwing jsonString(); validation is what has to stop this.
+    let catalog = GatewaySchemaCatalog(
+      provider: "p",
+      tier: "t",
+      operations: [
+        GatewayOperation(
+          name: "cmd go",
+          kind: .command,
+          tier: "t",
+          arguments: [GatewayArgument(name: "j", type: .named("JSON"))]
+        )
+      ]
+    )
+    for value: GatewayJSONValue in [.array([.double(.infinity)]), .object(["x": .double(.nan)])] {
+      #expect(throws: GatewaySDKError.self) {
+        _ = try GatewayArgvBuilder.build(
+          GatewayOperationRequest(operation: "cmd go", variables: ["j": value]),
+          catalog: catalog
+        )
+      }
+    }
+    // A finite payload still builds.
+    #expect(
+      try GatewayArgvBuilder.build(
+        GatewayOperationRequest(operation: "cmd go", variables: ["j": .array([.double(1.5)])]),
+        catalog: catalog
+      ) == ["cmd", "go", "--j", "1.5"]
+    )
+  }
+
   @Test("selection is ignored for commands")
   func selectionIgnored() throws {
     let flags = try build("files delete", ["file-id": .string("f")], selection: .raw("{ nonsense"))

@@ -242,6 +242,68 @@ struct VariableInlinerTests {
     }
   }
 
+  @Test("a non-finite double nested under a JSON or custom-scalar variable is rejected too")
+  func nestedNonFiniteDoubleRejected() throws {
+    // JSON and custom scalars accept any shape without descending, so these only fail if
+    // the non-finite scan walks the whole value.
+    let nested: [GatewayJSONValue] = [
+      .object(["x": .double(.infinity)]),
+      .array([.double(.nan)]),
+      .object(["a": .array([.object(["b": .double(-.infinity)])])])
+    ]
+    for value in nested {
+      for declaration in ["$j: JSON", "$j: DateTime"] {
+        #expect(throws: GatewaySDKError.self) {
+          _ = try inliner.inline(
+            document: "query Q(\(declaration)) { f(j: $j) }",
+            variables: ["j": value]
+          )
+        }
+      }
+    }
+    // An input object whose field is JSON-typed, carrying [inf].
+    let holderCatalog = {
+      var catalog = FixtureCatalogs.gmail
+      catalog.types.append(
+        GatewayNamedType(
+          name: "JSONHolder",
+          kind: .inputObject([GatewayArgument(name: "payload", type: .named("JSON"))])
+        )
+      )
+      return catalog
+    }()
+    #expect(throws: GatewaySDKError.self) {
+      _ = try GraphQLVariableInliner(catalog: holderCatalog).inline(
+        document: "query Q($inp: JSONHolder) { f(inp: $inp) }",
+        variables: ["inp": .object(["payload": .array([.double(.infinity)])])]
+      )
+    }
+    // The same shapes with finite doubles still inline.
+    #expect(
+      try GraphQLVariableInliner(catalog: holderCatalog).inline(
+        document: "query Q($inp: JSONHolder) { f(inp: $inp) }",
+        variables: ["inp": .object(["payload": .array([.double(1.5)])])]
+      ) == "query Q { f(inp: {payload: [1.5]}) }"
+    )
+  }
+
+  @Test("a float default that overflows to infinity is rejected as malformed")
+  func overflowingFloatDefaultRejected() throws {
+    // Double("1e999") is +inf, and defaults are never type-checked, so this is the one
+    // non-finite that validation cannot catch; the parser has to.
+    #expect {
+      _ = try inliner.inline(document: "query Q($f: Float = 1e999) { f(f: $f) }", variables: [:])
+    } throws: { error in
+      error as? GatewaySDKError
+        == .malformedDocument("float default '1e999' is not a finite number")
+    }
+    // A finite float default is unaffected.
+    #expect(
+      try inliner.inline(document: "query Q($f: Float = 1.5e2) { f(f: $f) }", variables: [:])
+        == "query Q { f(f: 150.0) }"
+    )
+  }
+
   @Test("numbers, booleans and null render as GraphQL literals")
   func scalarLiterals() throws {
     #expect(

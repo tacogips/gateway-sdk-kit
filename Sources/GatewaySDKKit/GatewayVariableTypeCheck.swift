@@ -31,22 +31,46 @@ public enum GatewayVariableTypeCheck {
     _ catalog: GatewaySchemaCatalog
   ) -> Bool {
     // A non-finite double has no JSON or GraphQL spelling, so it can never reach a
-    // gateway intact whatever the declared type says (JSON included). Rejecting it here
-    // means the argv builder and the inliner cannot render `inf`/`nan` downstream.
-    if case .double(let number) = value, !number.isFinite { return false }
+    // gateway intact whatever the declared type says. The scan has to walk the whole
+    // value, not just its root: `JSON` and custom scalars accept without descending, so
+    // an `inf` nested in an object or array would otherwise pass validation and then be
+    // rendered bare by the non-throwing GraphQLLiteralRenderer. Scanned once here rather
+    // than inside the recursion so the walk stays linear.
+    guard !containsNonFiniteDouble(value) else { return false }
+    return matchesType(value, type, catalog)
+  }
 
+  /// True when any double anywhere in the value is infinite or NaN.
+  static func containsNonFiniteDouble(_ value: GatewayJSONValue) -> Bool {
+    switch value {
+    case .double(let number):
+      return !number.isFinite
+    case .array(let elements):
+      return elements.contains(where: containsNonFiniteDouble)
+    case .object(let members):
+      return members.values.contains(where: containsNonFiniteDouble)
+    case .null, .bool, .int, .string:
+      return false
+    }
+  }
+
+  private static func matchesType(
+    _ value: GatewayJSONValue,
+    _ type: GatewayTypeRef,
+    _ catalog: GatewaySchemaCatalog
+  ) -> Bool {
     if case .nonNull(let inner) = type {
       if case .null = value { return false }
-      return matches(value, inner, catalog)
+      return matchesType(value, inner, catalog)
     }
     if case .null = value { return true }
 
     if case .list(let element) = type {
       if case .array(let elements) = value {
-        return elements.allSatisfy { matches($0, element, catalog) }
+        return elements.allSatisfy { matchesType($0, element, catalog) }
       }
       // GraphQL coerces a single value into a one-element list.
-      return matches(value, element, catalog)
+      return matchesType(value, element, catalog)
     }
 
     let typeName = type.namedTypeName
@@ -87,7 +111,7 @@ public enum GatewayVariableTypeCheck {
       let byName = Dictionary(uniqueKeysWithValues: fields.map { ($0.name, $0) })
       for (key, member) in members {
         guard let field = byName[key] else { return false }
-        guard matches(member, field.type, catalog) else { return false }
+        guard matchesType(member, field.type, catalog) else { return false }
       }
       for field in fields where field.defaultValue == nil {
         let isRequired = field.isRequired || field.type.isRequired

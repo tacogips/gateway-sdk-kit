@@ -4,7 +4,18 @@ import Testing
 
 @Suite("Variable type check")
 struct VariableTypeCheckTests {
-  private let catalog = FixtureCatalogs.gmail
+  /// The gmail fixture plus one input object carrying a JSON-typed field, which the
+  /// fixture has no reason to model but the nested-non-finite rules need.
+  private let catalog: GatewaySchemaCatalog = {
+    var catalog = FixtureCatalogs.gmail
+    catalog.types.append(
+      GatewayNamedType(
+        name: "JSONHolder",
+        kind: .inputObject([GatewayArgument(name: "payload", type: .named("JSON"))])
+      )
+    )
+    return catalog
+  }()
 
   private func accepts(_ value: GatewayJSONValue, _ type: String) throws -> Bool {
     GatewayVariableTypeCheck.matches(value, try GatewayTypeRef.parse(type), catalog)
@@ -121,6 +132,39 @@ struct VariableTypeCheckTests {
       #expect(try !accepts(.array([.double(number)]), "[Float]"))
     }
     #expect(try accepts(.double(1.5), "Float"))
+  }
+
+  @Test("the non-finite rejection reaches nested values, including under JSON and custom scalars")
+  func nonFiniteDoublesRejectedWhenNested() throws {
+    // JSON and custom scalars accept without descending into the value, so the scan has
+    // to be a whole-value walk or an `inf` buried in an object or array slips through
+    // validation and is rendered bare by the non-throwing literal renderer.
+    for number in [Double.infinity, -.infinity, .nan] {
+      for type in ["JSON", "DateTime"] {
+        #expect(try !accepts(.object(["x": .double(number)]), type))
+        #expect(try !accepts(.array([.double(number)]), type))
+        // Buried two levels down.
+        #expect(try !accepts(.object(["a": .array([.object(["b": .double(number)])])]), type))
+      }
+      // Through an input object whose field is JSON-typed.
+      #expect(try !accepts(.object(["payload": .array([.double(number)])]), "JSONHolder"))
+    }
+    // The same shapes with finite doubles are still accepted.
+    #expect(try accepts(.object(["x": .double(1.5)]), "JSON"))
+    #expect(try accepts(.object(["a": .array([.object(["b": .double(2)])])]), "DateTime"))
+    #expect(try accepts(.object(["payload": .array([.double(3.5)])]), "JSONHolder"))
+  }
+
+  @Test("containsNonFiniteDouble walks arrays and objects and ignores other cases")
+  func nonFiniteScan() {
+    #expect(GatewayVariableTypeCheck.containsNonFiniteDouble(.double(.infinity)))
+    #expect(GatewayVariableTypeCheck.containsNonFiniteDouble(.array([.int(1), .double(.nan)])))
+    #expect(GatewayVariableTypeCheck.containsNonFiniteDouble(.object(["k": .array([.double(-.infinity)])])))
+    #expect(!GatewayVariableTypeCheck.containsNonFiniteDouble(.object(["k": .array([.double(1)])])))
+    #expect(!GatewayVariableTypeCheck.containsNonFiniteDouble(.null))
+    #expect(!GatewayVariableTypeCheck.containsNonFiniteDouble(.string("inf")))
+    #expect(!GatewayVariableTypeCheck.containsNonFiniteDouble(.bool(true)))
+    #expect(!GatewayVariableTypeCheck.containsNonFiniteDouble(.int(1)))
   }
 
   @Test("check throws variableTypeMismatch naming the outermost variable")

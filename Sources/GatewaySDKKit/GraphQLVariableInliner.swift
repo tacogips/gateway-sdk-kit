@@ -185,8 +185,11 @@ public struct GraphQLVariableInliner: Sendable {
       }
       return (.int(number), start + 1)
     case .float:
-      guard let number = Double(token.text) else {
-        throw GatewaySDKError.malformedDocument("float default '\(token.text)' is not a number")
+      // `Double("1e999")` is `+inf`, and a default is never type-checked (only supplied
+      // values are), so an overflowing literal would otherwise be spliced back in as a
+      // bare `inf`.
+      guard let number = Double(token.text), number.isFinite else {
+        throw GatewaySDKError.malformedDocument("float default '\(token.text)' is not a finite number")
       }
       return (.double(number), start + 1)
     case .string, .blockString:
