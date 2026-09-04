@@ -23,7 +23,7 @@ public enum GraphQLLiteralRenderer {
     case .double(let number):
       return String(describing: number)
     case .string(let text):
-      if let unwrapped, case .named(let name) = unwrapped,
+      if let name = namedTypeName(of: unwrapped),
         catalog.namedType(name)?.enumValues != nil {
         return text
       }
@@ -33,11 +33,8 @@ public enum GraphQLLiteralRenderer {
       let rendered = elements.map { render($0, as: elementType, catalog: catalog) }
       return "[" + rendered.joined(separator: ", ") + "]"
     case .object(let members):
-      // GraphQL coerces a single value into a list, so an object against a list type is
-      // rendered against that list's element type.
-      let objectType = unwrapped?.listElementType?.unwrappingNonNull ?? unwrapped
       var inputFields: [String: GatewayArgument] = [:]
-      if let objectType, case .named(let name) = objectType,
+      if let name = namedTypeName(of: unwrapped),
         let fields = catalog.namedType(name)?.inputFields {
         inputFields = Dictionary(uniqueKeysWithValues: fields.map { ($0.name, $0) })
       }
@@ -46,6 +43,17 @@ public enum GraphQLLiteralRenderer {
       }
       return "{" + rendered.joined(separator: ", ") + "}"
     }
+  }
+
+  /// The innermost named type, looking through every list and non-null wrapper.
+  ///
+  /// A scalar value declared against a list type is coerced by GraphQL into a
+  /// one-element list (`GatewayVariableTypeCheck` accepts it on the same rule), so the
+  /// element type is what decides how that value renders. Without this, `INBOUND`
+  /// declared as `[Direction!]` would be quoted and the document would be invalid.
+  private static func namedTypeName(of type: GatewayTypeRef?) -> String? {
+    guard let type else { return nil }
+    return type.namedTypeName
   }
 
   /// A GraphQL string literal: the spec's named escapes, `\u00XX` for the remaining C0
