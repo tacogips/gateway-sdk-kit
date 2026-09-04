@@ -476,17 +476,17 @@ gate evidence.
 
 | Task | Status | Files changed | Verification commands/results | Blockers | Design divergences | Commit hash |
 | ---: | --- | --- | --- | --- | --- | --- |
-| 1 | complete | `Sources/GatewaySDKKit/GatewaySDKError.swift` | `mise run build` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
-| 2 | complete | `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLDocument.swift` | `mise run build` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
-| 3 | complete | parser, limits, lexer; corrective parser surrogate decoder | `mise run build`; full corrective gate passed (185 tests) | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
-| 4 | complete | parser and lexer tests; supported grammar/literal forms, exact named escapes/block-string dedentation, exact syntax messages/cases/positions, nested duplicate argument position, direct lexer failure details, and document/token/depth/selection/root/container/node below-at-over boundaries | focused parser/lexer suites and post-change full gate passed (209 tests, SwiftLint 0) | none | none | `b34a198`, `56d3ac4`, `7ca7990`, `e521a93` |
-| 5 | complete | validator; corrective nested-input, enum-literal, type-depth, current-request defaults, and request-scoped node accounting without rescanning supplied/literal values | `swift test --filter GraphQLValidatorTests` and `mise run lint` passed | none | none | `5f6267f`, `72f4032`, `b34a198`, `12b2496` |
-| 6 | complete | validator tests; 12 condition-specific stable-code passing cases, complete `UNKNOWN_VARIABLE` message/path assertion, wrapper-strip matrix, and exact direct-AST/supplied-value depth/selection/root/list-and-object-container/node boundaries | focused validator suite and post-change full gate passed (209 tests, SwiftLint 0) | none | none | `b34a198`, `12b2496`, `2d6a546`, `7913037`, `6a2dec9`, `599b240`, `c22dc27`, `e521a93` |
-| 7 | complete | runtime and projection; corrective private projection result and response paths | `mise run build`; full corrective gate passed | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
-| 8 | complete | runtime fixture/tests and hostile catalog test; deterministic concurrency, authorization, complete missing-key/scalar-object projection, mutation recorder, resolver list-and-object container triples, exact initializer failures, and every request-resource envelope with designed code and path | focused runtime suite and post-change full gate passed (209 tests, SwiftLint 0) | none | none | `12b2496`, `2d6a546`, `7913037`, `6a2dec9`, `599b240`, `c22dc27`, `56d3ac4`, `7ca7990`, `e521a93` |
-| 9 | complete | deleted inliner/renderer/tests; `SDLPrinterTests.swift`, `HostileCatalogTests.swift`, comments | `mise run build && mise run test`; stale-reference search passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
-| 10 | complete | `README.md`, `AGENTS.md`, `Package.swift` | `mise run test` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
-| 11 | complete | final-gate record | `arch -arm64 /bin/zsh -lc 'mise run build && mise run test && mise run lint'` passed (209 tests, SwiftLint 0); maximum 652 lines; stale-reference, diff, cached-diff, and clean-worktree checks passed | none | none | `8f400f7`, `7913037`, `b56c0ed`, `6a2dec9`, `34c3d60`, `599b240`, `c22dc27`, `56d3ac4`, `7ca7990`, `e521a93` |
+| 1 | complete | `Sources/GatewaySDKKit/GatewaySDKError.swift` | `arch -arm64 /bin/zsh -lc 'mise run build'` — passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
+| 2 | complete | `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLDocument.swift` | `arch -arm64 /bin/zsh -lc 'mise run build'` — passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
+| 3 | complete | `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLLimits.swift`; `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLParser.swift`; `Sources/GatewaySDKKit/GraphQLLexer.swift` | `arch -arm64 /bin/zsh -lc 'mise run build && mise run test && mise run lint'` — passed, 185 tests and SwiftLint 0 | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4`; `7dd1adb89d8228d890a9a33ec7692b8981f613c0`; `344aabe` |
+| 4 | complete | `Tests/GatewaySDKKitTests/GraphQLLexerTests.swift`; `Tests/GatewaySDKKitTests/GraphQLParserTests.swift` | `arch -arm64 /bin/zsh -lc 'swift test --filter GraphQLLexerTests && swift test --filter GraphQLParserTests'` — passed, 10 lexer and 12 parser tests; final gate recorded in Task 11 | none | none | `b34a198`; `56d3ac4`; `7ca7990`; `e521a93`; `344aabe` |
+| 5 | complete | `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLValidator.swift` | `arch -arm64 /bin/zsh -lc 'swift test --filter GraphQLValidatorTests && mise run lint'` — passed; SwiftLint 0 | none | none | `5f6267f`; `72f4032`; `b34a198`; `12b2496`; `344aabe` |
+| 6 | complete | `Tests/GatewaySDKKitTests/GraphQLValidatorTests.swift` | `arch -arm64 /bin/zsh -lc 'swift test --filter GraphQLValidatorTests'` — passed, 12 tests; final gate recorded in Task 11 | none | none | `b34a198`; `12b2496`; `2d6a546`; `7913037`; `6a2dec9`; `599b240`; `c22dc27`; `e521a93`; `344aabe` |
+| 7 | complete | `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLProjection.swift`; `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLRuntime.swift` | `arch -arm64 /bin/zsh -lc 'mise run build && mise run test && mise run lint'` — passed, 185 tests and SwiftLint 0 | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
+| 8 | complete | `Tests/GatewaySDKKitTests/FixtureCatalogs.swift`; `Tests/GatewaySDKKitTests/Fixtures/runtime-catalog.json`; `Tests/GatewaySDKKitTests/GraphQLRuntimeTests.swift`; `Tests/GatewaySDKKitTests/HostileCatalogTests.swift` | `arch -arm64 /bin/zsh -lc 'swift test --filter GraphQLRuntimeTests'` — passed, 18 tests; final gate recorded in Task 11 | none | none | `12b2496`; `2d6a546`; `7913037`; `6a2dec9`; `599b240`; `c22dc27`; `56d3ac4`; `7ca7990`; `e521a93`; `344aabe` |
+| 9 | complete | `Sources/GatewaySDKKit/GraphQLVariableInliner.swift` (deleted); `Sources/GatewaySDKKit/GraphQLLiteralRenderer.swift` (deleted); `Tests/GatewaySDKKitTests/VariableInlinerTests.swift` (deleted); `Tests/GatewaySDKKitTests/HostileCatalogTests.swift`; `Tests/GatewaySDKKitTests/SDLPrinterTests.swift`; `README.md`; `AGENTS.md`; `Package.swift` | `arch -arm64 /bin/zsh -lc 'mise run build && mise run test && rg -n -i "inliner|GraphQLVariableInliner|GraphQLLiteralRenderer" Sources Tests README.md AGENTS.md Package.swift'` — build/test passed; search returned no matches | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
+| 10 | complete | `README.md`; `AGENTS.md`; `Package.swift` | `arch -arm64 /bin/zsh -lc 'mise run test'` — passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4`; `344aabe` |
+| 11 | complete | `impl-plans/gateway-sdk-kit-runtime-impl-plan-2026-09-04.md` | `arch -arm64 /bin/zsh -lc 'mise run build && mise run test && mise run lint'` — passed, 211 tests and SwiftLint 0; `wc -l Sources/GatewaySDKKit/*.swift Sources/GatewaySDKKit/GraphQL/*.swift Tests/GatewaySDKKitTests/*.swift` — maximum 705; `rg -n -i 'inliner|GraphQLVariableInliner|GraphQLLiteralRenderer' Sources Tests README.md AGENTS.md Package.swift` — no matches; `git diff --check 8cf47d2..HEAD && git diff --cached --check && git status --porcelain` — passed and clean after final documentation commit | none | none | `e521a93`; `344aabe`; final documentation commit recorded below |
 
 Self-review correction (2026-09-04): the initial Task 4, 6, and 8 completion entries
 were not supported by their four focused tests. `comm-001058` required revision before
@@ -585,6 +585,34 @@ gate passed with 209 tests and zero SwiftLint violations; the maximum Swift file
 is 652, the stale-inliner search is empty, and diff/cached-diff and clean-worktree
 checks passed. Tasks 4, 6, 8, and 11 are complete.
 
+Step 7 review remediation (2026-09-04): `comm-001089` found four mid-severity
+issues: omitted nullable variables were removed from literal lists, duplicate catalog
+arguments could use the later definition, leading-zero integers were accepted, and the
+progress table lacked exact evidence. `344aabe` introduces an explicit internal
+coercion absence state; nullable list elements retain `.null`, while non-null elements
+remain rejected before a resolver runs. It also iterates catalog arguments in stable
+first-occurrence order for compatibility, coercion, defaults, and requiredness; rejects
+`01` and `-01` as positioned syntax errors; reports an aliased introspection field at
+the field token; and updates the README catalog and runtime example to use `threads`
+and `labels` resolvers. `Tests/GatewaySDKKitTests/GraphQLValidatorTests.swift` asserts
+the nullable-list materialization plus conflicting duplicate defaults/types;
+`Tests/GatewaySDKKitTests/GraphQLRuntimeTests.swift` asserts resolver-visible null and
+non-null rejection with zero calls; `Tests/GatewaySDKKitTests/GraphQLLexerTests.swift`
+and `Tests/GatewaySDKKitTests/GraphQLParserTests.swift` assert exact leading-zero and
+aliased-introspection syntax details. Focused verification passed:
+`arch -arm64 /bin/zsh -lc 'swift test --filter GraphQLLexerTests && swift test --filter
+GraphQLParserTests && swift test --filter GraphQLValidatorTests && swift test --filter
+GraphQLRuntimeTests && mise run lint'` (10 lexer, 12 parser, 12 validator, and 18
+runtime tests; SwiftLint 0). The complete final gate passed:
+`arch -arm64 /bin/zsh -lc 'mise run build && mise run test && mise run lint'` (211
+tests in 16 suites; SwiftLint 0); `wc -l Sources/GatewaySDKKit/*.swift
+Sources/GatewaySDKKit/GraphQL/*.swift Tests/GatewaySDKKitTests/*.swift` reports a
+705-line maximum; `rg -n -i 'inliner|GraphQLVariableInliner|GraphQLLiteralRenderer'
+Sources Tests README.md AGENTS.md Package.swift` returns no matches; and
+`git diff --check 8cf47d2..HEAD && git diff --cached --check` passed. No blocker or
+design divergence remains. The final documentation commit records the clean-worktree
+check.
+
 ## Completion criteria
 
 - Full gate green after matrix completion; every Swift file < 1000 lines; git clean
@@ -598,6 +626,6 @@ checks passed. Tasks 4, 6, 8, and 11 are complete.
   assert zero resolver invocations; rawOutput round-trip and generic-error redaction
   tests are present; every resource maximum has below/at/one-over coverage; query
   peak concurrency never exceeds 8 and indexed output remains document ordered.
-- README section 5 shows the adopter example and rejected constructs.
+- README section 5 shows the catalog's two-resolver adopter example and rejected constructs.
 - The progress log has complete evidence for Tasks 1–11, exact command results and
   commit hashes, with no blocker or unreviewed design divergence remaining.
