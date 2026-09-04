@@ -358,3 +358,38 @@ untouched; the package still has no dependencies and imports only `Foundation`.
 - The README's five snippet sections were compiled and run against the real API during
   the final sweep (throwaway test, not committed); each produces the output the README
   documents.
+
+## Review round 1 (2026-09-04): findings addressed
+
+The independent review returned `changes_requested` with four findings (three
+execution-confirmed, one plausible). All four are fixed; the reviewer's eight accepted
+residual risks needed no code change, including the Threads-golden reconciliation, which
+the review confirmed as correct against master design section 2.3.
+
+- **F1 (medium, correctness) — enum in a list rendered quoted.**
+  `GraphQLLiteralRenderer.render`'s `.string` case only recognised an enum when the
+  unwrapped type was `case .named`, so a single value coerced against `[Direction!]`
+  came out as `"INBOUND"` and the emitted document was invalid even though validation
+  had passed. Both the `.string` and `.object` cases now resolve the effective named
+  type through `namedTypeName(of:)`, which looks through every list and non-null
+  wrapper. This also fixes the nested-list case (`[[SendMessageInput!]!]`) that the
+  previous single-level `listElementType` unwrap in `.object` missed.
+- **F2 (low, undocumented semantics) — omitted nullable variable inlines to `null`.**
+  Kept as the behaviour (a token splice cannot delete the surrounding `arg: $var`
+  pair), and made explicit: documented on `inline(document:variables:)` and in README
+  section 5, and pinned by `unsuppliedNullableInlinesNull`.
+- **F3 (low, correctness) — `jsonString()` emitted `inf`/`nan`.** The serializer now
+  throws `.invalidJSONValue` for a non-finite double (`write` became `throws`). Fixed
+  at a second point too: `GatewayVariableTypeCheck.matches` rejects non-finite doubles
+  against every type including `JSON`, which closes the same hole in
+  `GatewayArgvBuilder.scalarText` and in the inliner's literal rendering — neither of
+  which routes through `jsonString()`.
+- **F4 (low, api-design) — default arguments shadowed conformer overrides.** The
+  default argument values moved off the protocol witnesses. `searchSchema(_:options:)`
+  and `invoke(_:environment:)` are now exact witnesses, and the one-argument spellings
+  are separate overloads that forward through `self`, so they dispatch via the witness
+  table. Pinned by `conveniencesDispatchThroughTheWitness`, which asserts both spellings
+  reach a conformer's override.
+
+Gate after the fixes: `arch -arm64 /bin/zsh -lc 'swift build && swift test && swiftlint'`
+exits 0 — 168 tests in 12 suites (up from 160), 0 lint violations, no build warnings.
