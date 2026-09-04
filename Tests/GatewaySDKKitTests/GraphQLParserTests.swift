@@ -37,6 +37,25 @@ struct GraphQLParserTests {
     #expect(query.contains("first line"))
   }
 
+  @Test("decodes every named escape and block-string indentation exactly")
+  func decodesEscapeAndBlockStringMatrix() throws {
+    let document = try GatewayGraphQLParser.parse(#"""
+      { f(quoted: "\"\\\/\b\f\n\r\t\u0041", block: """
+        first
+          second
+        third
+      """) }
+      """#)
+    let arguments = document.selectionSet[0].arguments
+    guard case .string(let quoted)? = arguments.first(where: { $0.name == "quoted" })?.value,
+      case .string(let block)? = arguments.first(where: { $0.name == "block" })?.value else {
+      Issue.record("expected decoded string arguments")
+      return
+    }
+    #expect(quoted == "\"\\/\u{08}\u{0C}\n\r\tA")
+    #expect(block == "first\n  second\nthird")
+  }
+
   @Test("rejects unsupported operations with positions")
   func rejectsUnsupportedOperations() {
     let cases = [

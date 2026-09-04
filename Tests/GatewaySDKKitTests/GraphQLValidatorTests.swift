@@ -202,6 +202,17 @@ struct GraphQLValidatorTests {
       let document = inspectDocument(value: .list(Array(repeating: GraphQLValue.int(1), count: count)))
       try expectInputBoundary(document, validator: local, expectedValue: value, over: count > GatewayGraphQLLimits.containerEntries, limit: "containerEntries", path: ["inspect"])
     }
+    for count in [GatewayGraphQLLimits.containerEntries - 1, GatewayGraphQLLimits.containerEntries, GatewayGraphQLLimits.containerEntries + 1] {
+      let value = objectValue(count: count)
+      try expectInputBoundary(
+        inspectDocument(value: literalObject(count: count)),
+        validator: GatewayGraphQLValidator(catalog: objectCatalog(count: count)),
+        expectedValue: value,
+        over: count > GatewayGraphQLLimits.containerEntries,
+        limit: "containerEntries",
+        path: ["inspect"]
+      )
+    }
     for nodes in [9_999, 10_000, 10_001] {
       let value = GatewayJSONValue.array(jsonRows(nodes: nodes))
       let document = inspectDocument(value: literalRows(nodes: nodes))
@@ -232,6 +243,18 @@ struct GraphQLValidatorTests {
         validator: local,
         variables: ["payload": .array(Array(repeating: .int(1), count: count))],
         expectedValue: .array(Array(repeating: .int(1), count: count)),
+        over: count > GatewayGraphQLLimits.containerEntries,
+        limit: "containerEntries",
+        path: []
+      )
+    }
+    for count in [GatewayGraphQLLimits.containerEntries - 1, GatewayGraphQLLimits.containerEntries, GatewayGraphQLLimits.containerEntries + 1] {
+      let value = objectValue(count: count)
+      try expectInputBoundary(
+        variables,
+        validator: local,
+        variables: ["payload": value],
+        expectedValue: value,
         over: count > GatewayGraphQLLimits.containerEntries,
         limit: "containerEntries",
         path: []
@@ -576,6 +599,28 @@ struct GraphQLValidatorTests {
     var value: GatewayJSONValue = .int(1)
     for _ in 0..<levels { value = .array([value]) }
     return value
+  }
+
+  private func literalObject(count: Int) -> GraphQLValue {
+    .object((0..<count).map { (name: "k\($0)", value: .int(1)) })
+  }
+
+  private func objectValue(count: Int) -> GatewayJSONValue {
+    .object(Dictionary(uniqueKeysWithValues: (0..<count).map { ("k\($0)", .int(1)) }))
+  }
+
+  private func objectCatalog(count: Int) -> GatewaySchemaCatalog {
+    GatewaySchemaCatalog(
+      provider: "test",
+      tier: "reader",
+      operations: [.init(name: "inspect", kind: .query, tier: "reader", arguments: [.init(name: "payload", type: .named("Payload"))], result: .named("JSON"))],
+      types: [
+        .init(
+          name: "Payload",
+          kind: .inputObject((0..<count).map { .init(name: "k\($0)", type: .named("Int")) })
+        )
+      ]
+    )
   }
 
   private func limitMessage(_ limit: String) -> String {

@@ -375,6 +375,23 @@ struct GraphQLRuntimeTests {
       #expect(envelope.exitCode == (count > GatewayGraphQLLimits.containerEntries ? 1 : 0))
       if count > GatewayGraphQLLimits.containerEntries { #expect(envelope.errors.first?.code == "RESOLVER_SHAPE") }
     }
+    for count in [GatewayGraphQLLimits.containerEntries - 1, GatewayGraphQLLimits.containerEntries, GatewayGraphQLLimits.containerEntries + 1] {
+      let recorder = CallRecorder()
+      let value = objectValue(count: count)
+      let envelope = await (try jsonRuntime(value, recorder: recorder)).execute(document: "{ inspect }", context: .init())
+      #expect(await recorder.snapshot().0 == 1)
+      if count > GatewayGraphQLLimits.containerEntries {
+        #expect(envelope.exitCode == 1)
+        #expect(envelope.data == .object(["inspect": .null]))
+        #expect(envelope.errors.count == 1)
+        #expect(envelope.errors.first?.code == "RESOLVER_SHAPE")
+        #expect(envelope.errors.first?.message == "resolver result exceeds containerEntries maximum 1000")
+        #expect(envelope.errors.first?.path == ["inspect"])
+      } else {
+        #expect(envelope.exitCode == 0)
+        #expect(envelope.data == .object(["inspect": value]))
+      }
+    }
     for finalCount in [988, 989, 990] {
       let groups = Array(repeating: GatewayJSONValue.array(Array(repeating: .int(1), count: 1_000)), count: 9)
         + [.array(Array(repeating: .int(1), count: finalCount))]
@@ -516,12 +533,16 @@ struct GraphQLRuntimeTests {
     )
   }
 
-  private func jsonRuntime(_ value: GatewayJSONValue) throws -> GatewayGraphQLRuntime {
+  private func jsonRuntime(_ value: GatewayJSONValue, recorder: CallRecorder? = nil) throws -> GatewayGraphQLRuntime {
     let catalog = GatewaySchemaCatalog(
       provider: "test", tier: "reader",
       operations: [.init(name: "inspect", kind: .query, tier: "reader", result: .named("JSON"))]
     )
-    return try GatewayGraphQLRuntime(catalog: catalog, resolvers: ["inspect": { _, _ in value }])
+    return try GatewayGraphQLRuntime(catalog: catalog, resolvers: ["inspect": { arguments, _ in
+      if let recorder { await recorder.begin(field: "inspect", arguments: arguments) }
+      if let recorder { await recorder.end() }
+      return value
+    }])
   }
 
   private func jsonInputRuntime(_ recorder: CallRecorder) throws -> GatewayGraphQLRuntime {
@@ -561,6 +582,10 @@ struct GraphQLRuntimeTests {
     var value: GatewayJSONValue = .int(1)
     for _ in 0..<levels { value = .array([value]) }
     return value
+  }
+
+  private func objectValue(count: Int) -> GatewayJSONValue {
+    .object(Dictionary(uniqueKeysWithValues: (0..<count).map { ("k\($0)", .int(1)) }))
   }
 
   private func literalInputDocument(_ count: Int) -> String {
