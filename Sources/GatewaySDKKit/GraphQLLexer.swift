@@ -68,11 +68,10 @@ public enum GraphQLLexer {
       if character == "$" {
         let start = index
         index = source.index(after: index)
-        let nameStart = index
-        scanName(source, &index)
-        guard nameStart < index else {
+        guard index < source.endIndex, isNameStart(source[index]) else {
           throw syntax("expected a variable name", source: source, at: start)
         }
+        scanName(source, &index)
         try append(token(.variable, source, start, index), to: &tokens, maximum: maximumTokens, source: source)
         continue
       }
@@ -169,6 +168,9 @@ public enum GraphQLLexer {
       guard exponentStart < index else {
         throw syntax("expected exponent digits", source: source, at: index)
       }
+    }
+    if index < source.endIndex, isNameStart(source[index]) {
+      throw syntax("invalid number/name boundary", source: source, at: index)
     }
     return token(isFloat ? .float : .int, source, start, index)
   }

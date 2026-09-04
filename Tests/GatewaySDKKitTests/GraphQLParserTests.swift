@@ -55,6 +55,13 @@ struct GraphQLParserTests {
     }
     #expect(quoted == "\"\\/\u{08}\u{0C}\n\r\tA")
     #expect(block == "first\n  second\nthird")
+
+    let firstLine = try GatewayGraphQLParser.parse("{ f(block: \"\"\"  first\n    second\n  third\n \n\t\n\"\"\") }")
+    guard case .string(let preserved)? = firstLine.selectionSet[0].arguments.first?.value else {
+      Issue.record("expected block string")
+      return
+    }
+    #expect(preserved == "  first\n  second\nthird")
   }
 
   @Test("rejects unsupported operations with positions")
@@ -63,7 +70,7 @@ struct GraphQLParserTests {
       SyntaxCase(source: "subscription S { labels(accountId: \"a\") { name } }", message: "subscriptions are not supported", line: 1, column: 1),
       SyntaxCase(source: "query { labels @skip(if: true) { name } }", message: "directives are not supported", line: 1, column: 16),
       SyntaxCase(source: "query { ...Part }", message: "fragments are not supported", line: 1, column: 9),
-      SyntaxCase(source: "query { labels(accountId: \"a\") { name } } fragment Part on Label { name }", message: "multiple operations are not supported", line: 1, column: 43)
+      SyntaxCase(source: "query { labels(accountId: \"a\") { name } } fragment Part on Label { name }", message: "fragments are not supported", line: 1, column: 43)
     ]
     for item in cases { expectSyntax(item.source, message: item.message, line: item.line, column: item.column) }
   }
@@ -117,6 +124,7 @@ struct GraphQLParserTests {
   func acceptsGrammarMatrix() throws {
     let sources = [
       "{ f }",
+      "{ fragment }",
       "query Named { f }",
       "mutation Named { f }",
       "query($x: Int = -1, $y: Float = 1.25e2, $z: String = \"x\", $b: Boolean = true, $n: ID = null, $e: Direction = INBOUND, $l: [Int] = [1, 2], $o: Input = {key: 1}) { a: f(value: $x) { b { c { d } } } }",
@@ -159,10 +167,14 @@ struct GraphQLParserTests {
     let cases = [
       SyntaxCase(source: "\n{ f(a: ?) }", message: "unexpected character '?'", line: 2, column: 8),
       SyntaxCase(source: "\nquery($) { f }", message: "expected a variable name", line: 2, column: 7),
+      SyntaxCase(source: "\nquery($1: Int) { f }", message: "expected a variable name", line: 2, column: 7),
       SyntaxCase(source: "\n{ f(a: 1.) }", message: "expected digits after '.'", line: 2, column: 10),
       SyntaxCase(source: "\n{ f(a: 1e) }", message: "expected exponent digits", line: 2, column: 10),
       SyntaxCase(source: "\n{ f(a: 01) }", message: "leading zeroes are not allowed", line: 2, column: 8),
       SyntaxCase(source: "\n{ f(a: -01) }", message: "leading zeroes are not allowed", line: 2, column: 8),
+      SyntaxCase(source: "\n{ f(a: 1true) }", message: "invalid number/name boundary", line: 2, column: 9),
+      SyntaxCase(source: "\n{ f(a: -1true) }", message: "invalid number/name boundary", line: 2, column: 10),
+      SyntaxCase(source: "\n{ f(a: [1true]) }", message: "invalid number/name boundary", line: 2, column: 10),
       SyntaxCase(source: "\n{ f(a: \"unterminated) }", message: "unterminated string", line: 2, column: 8),
       SyntaxCase(source: "\n{ f(a: \"\"\"unterminated) }", message: "unterminated block string", line: 2, column: 8)
     ]
@@ -173,6 +185,15 @@ struct GraphQLParserTests {
   func parserResourceBoundaryMatrix() throws {
     for depth in [31, 32] { _ = try GatewayGraphQLParser.parse(nestedDocument(depth: depth)) }
     expectSyntax(nestedDocument(depth: 33), message: GatewayGraphQLLimits.message("depth", GatewayGraphQLLimits.depth), line: 1, column: 129)
+
+    for wrappers in [30, 31] { _ = try GatewayGraphQLParser.parse(literalDepthDocument(wrappers: wrappers)) }
+    let overLiteralDepth = literalDepthDocument(wrappers: 32, leaf: "OVERFLOW")
+    expectSyntax(
+      overLiteralDepth,
+      message: GatewayGraphQLLimits.message("depth", GatewayGraphQLLimits.depth),
+      line: 1,
+      column: column(of: "OVERFLOW", in: overLiteralDepth)
+    )
 
     for count in [999, 1_000] { _ = try GatewayGraphQLParser.parse(selectionDocument(count: count)) }
     let overSelections = selectionDocument(count: 1_001)
@@ -230,6 +251,10 @@ struct GraphQLParserTests {
   private func listDocument(count: Int) -> String {
     let values = (0..<count).map { index in count > GatewayGraphQLLimits.containerEntries && index == count - 1 ? "OVERFLOW" : "1" }
     return "{ f(a: [" + values.joined(separator: " ") + "]) }"
+  }
+
+  private func literalDepthDocument(wrappers: Int, leaf: String = "1") -> String {
+    "{ f(a: " + String(repeating: "[", count: wrappers) + leaf + String(repeating: "]", count: wrappers) + ") }"
   }
 
   private func objectDocument(count: Int) -> String {

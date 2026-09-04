@@ -169,14 +169,14 @@ struct GraphQLValidatorTests {
       result: .named("Label")
     ))
     let document = try GatewayGraphQLParser.parse("query($payload: JSON) { inspect(payload: $payload) { name } }")
-    for suppliedNodes in [9_998, 9_999, 10_000] {
+    for suppliedNodes in [9_999, 10_000, 10_001] {
       let rows = jsonRows(nodes: suppliedNodes)
       do {
         let validated = try GatewayGraphQLValidator(catalog: catalog).validate(
           document,
           variables: ["payload": .array(rows)]
         )
-        if suppliedNodes > 9_999 {
+        if suppliedNodes > GatewayGraphQLLimits.inputValueNodes {
           Issue.record("expected aggregate RESOURCE_LIMIT")
         } else {
           #expect(validated.rootFields.first?.arguments == ["payload": .array(rows)])
@@ -186,7 +186,7 @@ struct GraphQLValidatorTests {
           Issue.record("expected validation error")
           continue
         }
-        #expect(suppliedNodes > 9_999)
+        #expect(suppliedNodes > GatewayGraphQLLimits.inputValueNodes)
         #expect(code == "RESOURCE_LIMIT")
         #expect(message == GatewayGraphQLLimits.message("inputValueNodes", GatewayGraphQLLimits.inputValueNodes))
         #expect(path == [])
@@ -260,13 +260,13 @@ struct GraphQLValidatorTests {
         path: []
       )
     }
-    for nodes in [9_998, 9_999, 10_000] {
+    for nodes in [9_999, 10_000, 10_001] {
       try expectInputBoundary(
         variables,
         validator: local,
         variables: ["payload": .array(jsonRows(nodes: nodes))],
         expectedValue: .array(jsonRows(nodes: nodes)),
-        over: nodes > 9_999,
+        over: nodes > GatewayGraphQLLimits.inputValueNodes,
         limit: "inputValueNodes",
         path: []
       )

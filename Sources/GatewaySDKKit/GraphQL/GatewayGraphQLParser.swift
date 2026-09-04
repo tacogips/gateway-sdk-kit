@@ -76,17 +76,18 @@ enum GraphQLStringDecoder {
   private static func decodeBlock(_ raw: String) -> String {
     let replaced = raw.replacingOccurrences(of: "\\\"\"\"", with: "\"\"\"")
     var lines = replaced.components(separatedBy: .newlines)
-    if lines.first?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true { lines.removeFirst() }
-    if lines.last?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true { lines.removeLast() }
-    let indents = lines.dropFirst().filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.map {
-      $0.prefix { $0 == " " || $0 == "\t" }.count
+    let indents = lines.dropFirst().compactMap { line -> Int? in
+      guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+      return line.prefix { $0 == " " || $0 == "\t" }.count
     }
     if let indent = indents.min(), indent > 0 {
-      lines = lines.map { line in
-        let count = line.prefix { $0 == " " || $0 == "\t" }.count
-        return String(line.dropFirst(min(indent, count)))
+      for lineIndex in lines.indices.dropFirst() {
+        let count = lines[lineIndex].prefix { $0 == " " || $0 == "\t" }.count
+        lines[lineIndex] = String(lines[lineIndex].dropFirst(min(indent, count)))
       }
     }
+    while lines.first?.trimmingCharacters(in: .whitespaces).isEmpty == true { lines.removeFirst() }
+    while lines.last?.trimmingCharacters(in: .whitespaces).isEmpty == true { lines.removeLast() }
     return lines.joined(separator: "\n")
   }
 
@@ -111,7 +112,8 @@ private struct GraphQLDocumentParser {
       document = try namedOperation()
     }
     if let trailing = peek {
-      if trailing.text == "fragment" || trailing.text == "query" || trailing.text == "mutation" { throw failure("multiple operations are not supported", at: trailing) }
+      if trailing.text == "fragment" { throw failure("fragments are not supported", at: trailing) }
+      if trailing.text == "query" || trailing.text == "mutation" { throw failure("multiple operations are not supported", at: trailing) }
       throw failure("trailing tokens after operation", at: trailing)
     }
     return document
@@ -187,7 +189,6 @@ private struct GraphQLDocumentParser {
 
   private mutating func selection(depth: Int) throws -> GatewayGraphQLDocument.Selection {
     let initial = try take(kind: .name)
-    if initial.text == "fragment" { throw failure("fragments are not supported", at: initial) }
     if initial.text.hasPrefix("__") { throw failure("introspection is not supported", at: initial) }
     var alias: String?
     var name = initial.text
@@ -199,13 +200,13 @@ private struct GraphQLDocumentParser {
       name = field.text
     }
     if name.hasPrefix("__") { throw failure("introspection is not supported", at: field) }
-    let arguments = peek?.text == "(" ? try arguments(depth: depth) : []
+    let arguments = peek?.text == "(" ? try arguments() : []
     if peek?.text == "@" { throw failure("directives are not supported", at: peek) }
     let nested = peek?.text == "{" ? try selectionSet(depth: depth, root: false) : []
     return .init(alias: alias, name: name, arguments: arguments, selectionSet: nested)
   }
 
-  private mutating func arguments(depth: Int) throws -> [GatewayGraphQLDocument.Argument] {
+  private mutating func arguments() throws -> [GatewayGraphQLDocument.Argument] {
     _ = try expect("(")
     var arguments: [GatewayGraphQLDocument.Argument] = []
     var names: Set<String> = []
@@ -213,7 +214,7 @@ private struct GraphQLDocumentParser {
       let name = try take(kind: .name)
       guard names.insert(name.text).inserted else { throw failure("duplicate argument '\(name.text)'", at: name) }
       _ = try expect(":")
-      arguments.append(.init(name: name.text, value: try value(depth: depth, constant: false)))
+      arguments.append(.init(name: name.text, value: try value(depth: 0, constant: false)))
     }
     _ = try expect(")")
     return arguments
@@ -222,9 +223,11 @@ private struct GraphQLDocumentParser {
   private mutating func value(depth: Int, constant: Bool) throws -> GraphQLValue {
     try checkDepth(depth + 1, at: peek)
     let token = try take()
-    inputNodeCount += 1
-    guard inputNodeCount <= GatewayGraphQLLimits.inputValueNodes else {
-      throw failure(GatewayGraphQLLimits.message("inputValueNodes", GatewayGraphQLLimits.inputValueNodes), at: token)
+    if token.kind != .variable {
+      inputNodeCount += 1
+      guard inputNodeCount <= GatewayGraphQLLimits.inputValueNodes else {
+        throw failure(GatewayGraphQLLimits.message("inputValueNodes", GatewayGraphQLLimits.inputValueNodes), at: token)
+      }
     }
     switch token.kind {
     case .int:

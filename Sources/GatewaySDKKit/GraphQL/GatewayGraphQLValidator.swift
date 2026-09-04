@@ -367,6 +367,7 @@ private enum GatewayGraphQLBudget {
     var selections = 0; var inputNodes = 0
     func walkValue(_ value: GraphQLValue, depth: Int, path: [String]) throws {
       guard depth <= GatewayGraphQLLimits.depth else { throw limit("depth", path) }
+      if case .variable = value { return }
       inputNodes += 1; guard inputNodes <= GatewayGraphQLLimits.inputValueNodes else { throw limit("inputValueNodes", path) }
       switch value {
       case .list(let values):
@@ -387,7 +388,9 @@ private enum GatewayGraphQLBudget {
           throw limit("selections", path + [selection.responseKey])
         }
         for argument in selection.arguments { try walkValue(argument.value, depth: depth, path: path + [selection.responseKey]) }
-        try fields(selection.selectionSet, depth: depth + 1, path: path + [selection.responseKey], root: false)
+        if !selection.selectionSet.isEmpty {
+          try fields(selection.selectionSet, depth: depth + 1, path: path + [selection.responseKey], root: false)
+        }
       }
     }
     try fields(document.selectionSet, depth: 1, path: [], root: true)
