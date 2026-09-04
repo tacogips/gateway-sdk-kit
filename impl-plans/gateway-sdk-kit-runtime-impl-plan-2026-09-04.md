@@ -481,12 +481,12 @@ gate evidence.
 | 3 | complete | parser, limits, lexer; corrective parser surrogate decoder | `mise run build`; full corrective gate passed (185 tests) | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
 | 4 | complete | parser and lexer tests; supported grammar/literal forms, rejection and lexer positions, and document/token/depth/selection/root/container/node below-at-over boundaries | `swift test --filter GraphQLParserTests` and `mise run lint` passed | none | none | `b34a198` |
 | 5 | complete | validator; corrective nested-input, enum-literal, type-depth, current-request defaults, and request-scoped node accounting without rescanning supplied/literal values | `swift test --filter GraphQLValidatorTests` and `mise run lint` passed | none | none | `5f6267f`, `72f4032`, `b34a198`, `12b2496` |
-| 6 | complete | validator tests; stable-code path/message pairs, wrapper-strip matrix, direct-AST input container/node triples, and supplied-variable depth/node/container triples | `swift test --filter GraphQLValidatorTests` passed; final full gate passed (208 tests) | none | none | `b34a198`, `12b2496`, `2d6a546`, `7913037`, `6a2dec9` |
+| 6 | complete | validator tests; 12 condition-specific stable-code passing counterparts, complete `UNKNOWN_VARIABLE` message/path assertion, wrapper-strip matrix, and direct-AST/supplied-value depth/container/node matrices | focused validator suite and post-change full gate passed (208 tests, SwiftLint 0) | none | none | `b34a198`, `12b2496`, `2d6a546`, `7913037`, `6a2dec9`, `599b240` |
 | 7 | complete | runtime and projection; corrective private projection result and response paths | `mise run build`; full corrective gate passed | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
-| 8 | complete | runtime fixture/tests and hostile catalog test; deterministic concurrency, authorization, projection, and envelope document/token/selection/root/input-depth/literal/supplied resource triples | `swift test --filter GraphQLRuntimeTests` passed; final full gate passed (208 tests) | none | none | `12b2496`, `2d6a546`, `7913037`, `6a2dec9` |
+| 8 | complete | runtime fixture/tests and hostile catalog test; deterministic concurrency, authorization, projection, and every request-resource envelope including literal depth/node triples | focused runtime suite and post-change full gate passed (208 tests, SwiftLint 0) | none | none | `12b2496`, `2d6a546`, `7913037`, `6a2dec9`, `599b240` |
 | 9 | complete | deleted inliner/renderer/tests; `SDLPrinterTests.swift`, `HostileCatalogTests.swift`, comments | `mise run build && mise run test`; stale-reference search passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 10 | complete | `README.md`, `AGENTS.md`, `Package.swift` | `mise run test` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
-| 11 | complete | final-gate record | `arch -arm64 /bin/zsh -lc 'mise run build && mise run test && mise run lint'` passed (208 tests, SwiftLint 0); line audit maximum 538; stale-reference search, `git diff --check`, and `git diff --cached --check` passed | none | none | `8f400f7`, `7913037`, `b56c0ed`, `6a2dec9` |
+| 11 | complete | final-gate record | `mise run build && mise run test && mise run lint` passed (208 tests, SwiftLint 0); maximum 583 lines; stale-reference, diff, cached-diff, and clean-worktree checks passed | none | none | `8f400f7`, `7913037`, `b56c0ed`, `6a2dec9`, `34c3d60`, `599b240` |
 
 Self-review correction (2026-09-04): the initial Task 4, 6, and 8 completion entries
 were not supported by their four focused tests. `comm-001058` required revision before
@@ -537,6 +537,15 @@ matrices with materialization or resolver-call assertions. The post-change full 
 passed with 208 tests and zero SwiftLint violations; the largest Swift file is now 538
 lines, the stale-inliner search is empty, and diff/cached-diff checks passed. This
 documentation commit records the final clean-worktree evidence.
+
+Final acceptance correction (2026-09-04): `comm-001074` required condition-specific
+success cases rather than a repeated generic success, complete `UNKNOWN_VARIABLE`
+message/path coverage, every direct-AST and supplied-value validator boundary, and
+literal input depth/node runtime-envelope triples. `599b240` provides those tests.
+Every over-limit runtime request now asserts its code, `data: nil`, exit status 2, and
+zero resolver calls. The post-change focused suites and full gate passed with 208
+tests and zero SwiftLint violations; the 583-line maximum, empty stale-inliner search,
+diff checks, and clean worktree complete Tasks 6, 8, and 11.
 
 ## Completion criteria
 
