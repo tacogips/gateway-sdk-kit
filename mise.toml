@@ -1,0 +1,38 @@
+min_version = "2026.8.3"
+
+[tools]
+swift = "6.3.3"
+swiftlint = "latest"
+gitleaks = "latest"
+github-cli = "latest"
+pre-commit = "latest"
+
+[tasks."default"]
+description = "Show available tasks"
+run = '''
+mise tasks ls
+'''
+
+[tasks."build"]
+description = "Build the Swift package"
+run = '''
+swift build
+'''
+
+[tasks."test"]
+description = "Run Swift tests"
+run = '''
+swift test
+'''
+
+[tasks."lint"]
+description = "Run SwiftLint when available"
+run = '''
+swiftlint
+'''
+
+[tasks."clean"]
+description = "Clean SwiftPM artifacts"
+run = '''
+rm -rf .build
+'''
