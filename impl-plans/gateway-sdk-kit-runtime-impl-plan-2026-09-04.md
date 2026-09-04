@@ -480,7 +480,7 @@ gate evidence.
 | 2 | complete | `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLDocument.swift` | `mise run build` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 3 | complete | parser, limits, lexer; corrective parser surrogate decoder | `mise run build`; full corrective gate passed (185 tests) | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
 | 4 | in progress | parser and lexer tests; exact representative positions and byte/token boundaries added | focused parser rerun passed; remaining accepted grammar/resource cases pending | acceptance matrix completion | none | pending |
-| 5 | complete | validator; corrective nested input type and resource-path accounting | `mise run build`; full corrective gate passed | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
+| 5 | in progress | validator; corrective nested-input, type-depth, current-request defaults, and request-scoped node accounting | focused validator test and SwiftLint passed | Task 6/8 matrices pending | none | `5f6267f`, `72f4032` |
 | 6 | in progress | validator tests; direct-AST duplicate/type-depth/default-scope and container boundaries added | focused validator rerun passed; remaining accepted matrices pending | acceptance matrix completion | none | pending |
 | 7 | complete | runtime and projection; corrective private projection result and response paths | `mise run build`; full corrective gate passed | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
 | 8 | in progress | runtime fixture/tests and hostile catalog test; deterministic barrier, result-order, and depth/node boundary cases added | focused runtime rerun passed; remaining accepted matrices pending | acceptance matrix completion | none | pending |
