@@ -473,3 +473,40 @@ exits 0 — 173 tests in 12 suites (up from 168), 0 lint violations, no build wa
 Gate after the fixes: `arch -arm64 /bin/zsh -lc 'swift build && swift test && swiftlint'`
 exits 0 — 183 tests in 12 suites (up from 173), 0 lint violations, no build warnings.
 Every new test was verified to fail with its fix neutered.
+
+## Review round 4 (2026-09-04): F9, F10 addressed
+
+- **F9 (low, robustness) — the F8 fix left the sibling hole one branch above.**
+  `init(parsingCLIOutput:exitCode:)` entered the shape-B branch only on
+  `if case .bool(let ok) = root["ok"]`. A payload whose `ok` member was present but not
+  a boolean (`"false"`, `null`, `0`, an array) failed that guard, then satisfied the
+  shape-A guard because `data` was present, so shape-A parsing ran and never read the
+  singular `error` object — reporting a failed call as an empty success, the exact
+  outcome F8 was raised to prevent. Fixed with an explicit branch: an `ok` member that
+  is not a boolean means the payload is shape B in intent but not in form, so it
+  degrades to one `GatewayEnvelopeError(message: stdout)` rather than guessing at
+  success or failure. `data` is still surfaced when present.
+
+  **Decision for a shape-A payload carrying a singular `error` member** (the review
+  asked for this to be recorded explicitly): **degrade, not consume.** A singular
+  `error` belongs to shape B; alongside `data`/`errors` it means the payload matches
+  neither documented shape cleanly, so guessing at its structure would be inventing a
+  third shape the brief does not describe. Degrading is consistent with the rule F8
+  established one round earlier — a member that is present but off-contract yields one
+  raw-text error — and with the brief's stated fallback. Nothing is lost: the raw text
+  carries the message. Two refinements: a populated `errors` array wins, so the
+  singular member never adds a second entry; and an explicitly null `error` is not a
+  failure signal. After this round no branch of the initializer can report a failed
+  call as an empty success.
+- **F10 (low, documentation) — the object-key rule was invisible to facade authors.**
+  F6 added a user-visible inliner rule that lived only in a code comment and the plan.
+  It is now in README section 5's rule list, followed by a short paragraph and example
+  stating that the rule is inliner-only — the document builder passes variables through
+  as a variables map and the argv builder JSON-encodes objects, so both keep accepting
+  keys like `page-size` — and the same note is on the `inline(document:variables:)` doc
+  comment beside the explicit-null paragraph, citing `otherPathsKeepArbitraryKeys` as
+  the pin.
+
+Gate after the fixes: `arch -arm64 /bin/zsh -lc 'swift build && swift test && swiftlint'`
+exits 0 — 186 tests in 12 suites (up from 183), 0 lint violations, no build warnings.
+Both new envelope tests were verified to fail with the fix neutered.
