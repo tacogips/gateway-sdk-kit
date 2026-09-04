@@ -653,9 +653,12 @@ a `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLParser.swift` scanner that treats
 CRLF, CR, and LF as one line terminator, normalizes them to LF, preserves first-line
 indentation, and removes common indentation and repeated surrounding blank lines.
 `Tests/GatewaySDKKitTests/GraphQLParserTests.swift` asserts exact CRLF and CR values.
-The initial focused parser command failed because `Optional.isSomeAnd` is unavailable
-in this Swift toolchain; replacing it with `while let` loops resolved the compile
-failure. The corrected focused commands passed:
+The initial focused command, `arch -arm64 /bin/zsh -lc 'swift test --filter
+GraphQLParserTests && mise run lint'`, failed at compile time: `String?` has no member
+`isSomeAnd` (at the two optional first/last blank-line checks). Replacing those checks
+with `while let` loops resolved the failure. The later passing rerun was
+`arch -arm64 /bin/zsh -lc 'swift test --filter GraphQLParserTests && mise run lint'`
+(12 parser tests; SwiftLint 0). The corrected broader focused commands passed:
 `arch -arm64 /bin/zsh -lc 'swift test --filter GraphQLLexerTests && swift test --filter
 GraphQLParserTests && swift test --filter GraphQLValidatorTests && swift test --filter
 GraphQLRuntimeTests && mise run lint'` (10 lexer, 12 parser, 13 validator, 19 runtime
