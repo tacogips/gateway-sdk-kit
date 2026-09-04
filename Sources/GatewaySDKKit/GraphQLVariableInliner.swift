@@ -282,14 +282,73 @@ public struct GraphQLVariableInliner: Sendable {
         declaration.defaultValue == nil {
         throw GatewaySDKError.missingRequiredVariable(operation: operation, name: declaration.name)
       }
-      guard let value else { continue }
-      try GatewayVariableTypeCheck.check(
-        value,
-        against: declaration.type,
-        name: declaration.name,
-        catalog: catalog
-      )
+      if let value {
+        try GatewayVariableTypeCheck.check(
+          value,
+          against: declaration.type,
+          name: declaration.name,
+          catalog: catalog
+        )
+      }
+      // Check exactly what the splice will render: supplied value, else the default.
+      guard let effective = value ?? declaration.defaultValue else { continue }
+      if let key = Self.firstIllegalObjectKey(in: effective) {
+        throw GatewaySDKError.variableTypeMismatch(
+          name: declaration.name,
+          expected: "\(declaration.type.graphQLString) with GraphQL-name object keys",
+          actual: "object key '\(key)'"
+        )
+      }
     }
+  }
+
+  // MARK: - Object key legality
+
+  /// The first object key anywhere in the value that is not a legal GraphQL Name,
+  /// searching keys in the same sorted order the renderer emits them.
+  ///
+  /// This guard lives in the inliner on purpose, and must NOT be moved into
+  /// `GatewayVariableTypeCheck` — the opposite call from the non-finite scan in round 2.
+  /// A non-finite double is unrepresentable everywhere, so the shared chokepoint was
+  /// right for it. An object key like `page-size` is perfectly valid on the other two
+  /// paths: `GatewayDocumentBuilder` passes variables through as a GraphQL variables map
+  /// and never renders keys, and `GatewayArgvBuilder` routes objects through
+  /// `jsonString()` where any key is legal. Only the inliner splices keys into GraphQL
+  /// source, where they must be Names. Moving this to the shared check would break the
+  /// two paths that legitimately carry arbitrary JSON keys.
+  static func firstIllegalObjectKey(in value: GatewayJSONValue) -> String? {
+    switch value {
+    case .null, .bool, .int, .double, .string:
+      return nil
+    case .array(let elements):
+      for element in elements {
+        if let key = firstIllegalObjectKey(in: element) { return key }
+      }
+      return nil
+    case .object(let members):
+      for member in members.sorted(by: { $0.key < $1.key }) {
+        if !isLegalGraphQLName(member.key) { return member.key }
+        if let key = firstIllegalObjectKey(in: member.value) { return key }
+      }
+      return nil
+    }
+  }
+
+  /// GraphQL Name: `/^[_A-Za-z][_0-9A-Za-z]*$/`.
+  static func isLegalGraphQLName(_ name: String) -> Bool {
+    var scalars = name.unicodeScalars.makeIterator()
+    guard let first = scalars.next() else { return false }
+    guard first == "_" || ("A"..."Z").contains(first) || ("a"..."z").contains(first) else {
+      return false
+    }
+    while let scalar = scalars.next() {
+      let legal = scalar == "_"
+        || ("A"..."Z").contains(scalar)
+        || ("a"..."z").contains(scalar)
+        || ("0"..."9").contains(scalar)
+      guard legal else { return false }
+    }
+    return true
   }
 
   // MARK: - Rewrite
@@ -359,21 +418,71 @@ public struct GraphQLVariableInliner: Sendable {
       case "r": out.append("\r")
       case "t": out.append("\t")
       case "u":
-        var digits = ""
-        for _ in 0..<4 where index < end {
-          digits.append(token.text[index])
+        let first = try Self.readHexQuad(token, &index, end)
+        // An astral character is spelled as a UTF-16 surrogate pair (`\uD83D\uDE00`),
+        // so a high surrogate must be combined with the low surrogate that follows;
+        // neither half is a scalar on its own.
+        if Self.isHighSurrogate(first) {
+          guard index < end, token.text[index] == "\\" else {
+            throw GatewaySDKError.malformedDocument(
+              "unpaired high surrogate escape '\\u\(Self.hex(first))'"
+            )
+          }
           index = token.text.index(after: index)
+          guard index < end, token.text[index] == "u" else {
+            throw GatewaySDKError.malformedDocument(
+              "unpaired high surrogate escape '\\u\(Self.hex(first))'"
+            )
+          }
+          index = token.text.index(after: index)
+          let second = try Self.readHexQuad(token, &index, end)
+          guard Self.isLowSurrogate(second) else {
+            throw GatewaySDKError.malformedDocument(
+              "invalid low surrogate escape '\\u\(Self.hex(second))'"
+            )
+          }
+          let combined = 0x10000 + ((first - 0xD800) << 10) + (second - 0xDC00)
+          guard let scalar = Unicode.Scalar(combined) else {
+            throw GatewaySDKError.malformedDocument("invalid surrogate pair")
+          }
+          out.unicodeScalars.append(scalar)
+        } else {
+          guard let scalar = Unicode.Scalar(first) else {
+            throw GatewaySDKError.malformedDocument(
+              "invalid unicode escape '\\u\(Self.hex(first))'"
+            )
+          }
+          out.unicodeScalars.append(scalar)
         }
-        guard digits.count == 4, let code = UInt32(digits, radix: 16),
-          let scalar = Unicode.Scalar(code) else {
-          throw GatewaySDKError.malformedDocument("invalid unicode escape '\\u\(digits)'")
-        }
-        out.unicodeScalars.append(scalar)
       default:
         throw GatewaySDKError.malformedDocument("unknown escape '\\\(escape)'")
       }
     }
     return out
+  }
+
+  /// Reads exactly four hex digits starting at `index`, advancing it past them.
+  private static func readHexQuad(
+    _ token: GraphQLToken,
+    _ index: inout String.Index,
+    _ end: String.Index
+  ) throws -> UInt32 {
+    var digits = ""
+    for _ in 0..<4 where index < end {
+      digits.append(token.text[index])
+      index = token.text.index(after: index)
+    }
+    guard digits.count == 4, let code = UInt32(digits, radix: 16) else {
+      throw GatewaySDKError.malformedDocument("invalid unicode escape '\\u\(digits)'")
+    }
+    return code
+  }
+
+  private static func isHighSurrogate(_ code: UInt32) -> Bool { (0xD800...0xDBFF).contains(code) }
+  private static func isLowSurrogate(_ code: UInt32) -> Bool { (0xDC00...0xDFFF).contains(code) }
+
+  private static func hex(_ code: UInt32) -> String {
+    String(format: "%04X", code)
   }
 
   /// The spec's block-string value algorithm: strip the common indentation and the

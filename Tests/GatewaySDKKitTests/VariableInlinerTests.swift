@@ -360,6 +360,167 @@ struct VariableInlinerTests {
     )
   }
 
+  // MARK: - Object key legality
+
+  /// The gmail fixture plus a JSON-typed query argument, which the fixture has no reason
+  /// to model but the object-key rules need.
+  private var jsonCatalog: GatewaySchemaCatalog {
+    var catalog = FixtureCatalogs.gmail
+    catalog.operations.append(
+      GatewayOperation(
+        name: "blob",
+        kind: .query,
+        tier: "reader",
+        arguments: [GatewayArgument(name: "j", type: .named("JSON"))],
+        result: .named("String")
+      )
+    )
+    return catalog
+  }
+
+  @Test(
+    "an object key that is not a legal GraphQL Name is rejected",
+    arguments: ["a-b", "with space", "", "1st", "a.b", "a:b", "kebab-case-key"]
+  )
+  func illegalObjectKeyRejected(_ key: String) {
+    // GraphQL object keys are Names; the renderer splices them raw, so an illegal key
+    // would produce a document the kit's own lexer cannot parse.
+    #expect {
+      _ = try GraphQLVariableInliner(catalog: jsonCatalog).inline(
+        document: "query Q($j: JSON) { blob(j: $j) }",
+        variables: ["j": .object([key: .int(1)])]
+      )
+    } throws: { error in
+      error as? GatewaySDKError
+        == .variableTypeMismatch(
+          name: "j",
+          expected: "JSON with GraphQL-name object keys",
+          actual: "object key '\(key)'"
+        )
+    }
+  }
+
+  @Test("an illegal key nested two levels down inside an array of objects is rejected")
+  func illegalObjectKeyNestedRejected() {
+    #expect {
+      _ = try GraphQLVariableInliner(catalog: jsonCatalog).inline(
+        document: "query Q($j: JSON) { blob(j: $j) }",
+        variables: ["j": .object(["ok": .array([.object(["bad key": .int(1)])])])]
+      )
+    } throws: { error in
+      error as? GatewaySDKError
+        == .variableTypeMismatch(
+          name: "j",
+          expected: "JSON with GraphQL-name object keys",
+          actual: "object key 'bad key'"
+        )
+    }
+  }
+
+  @Test("an all-legal-key object still inlines to the exact sorted literal")
+  func legalObjectKeysStillInline() throws {
+    #expect(
+      try GraphQLVariableInliner(catalog: jsonCatalog).inline(
+        document: "query Q($j: JSON) { blob(j: $j) }",
+        variables: [
+          "j": .object([
+            "zed": .int(3),
+            "_under": .string("s"),
+            "a_1": .bool(true),
+            "Nested": .object(["inner9": .array([.int(1), .null])])
+          ])
+        ]
+      ) == #"query Q { blob(j: {Nested: {inner9: [1, null]}, _under: "s", a_1: true, zed: 3}) }"#
+    )
+  }
+
+  @Test("isLegalGraphQLName follows the GraphQL Name grammar")
+  func legalNameGrammar() {
+    for name in ["a", "A", "_", "_1", "aB9_", "Query"] {
+      #expect(GraphQLVariableInliner.isLegalGraphQLName(name))
+    }
+    for name in ["", "1", "1a", "a-b", "a b", "a.b", "\u{00E9}"] {
+      #expect(!GraphQLVariableInliner.isLegalGraphQLName(name))
+    }
+  }
+
+  @Test("the document builder and the argv builder still carry arbitrary JSON keys")
+  func otherPathsKeepArbitraryKeys() throws {
+    // The guard is deliberately inliner-local: these two paths never splice keys into
+    // GraphQL source, so hyphenated and spaced keys must keep working for them.
+    let blob = GatewayJSONValue.object(["a-b": .int(1), "with space": .int(2), "1st": .int(3)])
+
+    let built = try GatewayDocumentBuilder(catalog: jsonCatalog).build(
+      GatewayOperationRequest(operation: "blob", variables: ["j": blob])
+    )
+    #expect(built.variables == ["j": blob])
+    #expect(built.document == "query Blob($j: JSON) {\n  blob(j: $j)\n}")
+
+    var commandCatalog = FixtureCatalogs.documents
+    commandCatalog.operations.append(
+      GatewayOperation(
+        name: "cmd go",
+        kind: .command,
+        tier: "writer",
+        arguments: [GatewayArgument(name: "j", type: .named("JSON"))]
+      )
+    )
+    #expect(
+      try GatewayArgvBuilder.build(
+        GatewayOperationRequest(operation: "cmd go", variables: ["j": blob]),
+        catalog: commandCatalog
+      ) == ["cmd", "go", "--j", #"{"1st":3,"a-b":1,"with space":2}"#]
+    )
+  }
+
+  // MARK: - Unicode escapes in defaults
+
+  @Test("a surrogate-pair escape in a string default decodes to the same character as the literal")
+  func surrogatePairDefault() throws {
+    let viaEscape = try inliner.inline(
+      // Raw string: the document text really contains the six-character escape.
+      document: #"query Q($s: String = "\uD83D\uDE00") { f(s: $s) }"#,
+      variables: [:]
+    )
+    let viaLiteral = try inliner.inline(
+      document: "query Q($s: String = \"\u{1F600}\") { f(s: $s) }",
+      variables: [:]
+    )
+    #expect(viaEscape == viaLiteral)
+    #expect(viaEscape == "query Q { f(s: \"\u{1F600}\") }")
+  }
+
+  @Test("a BMP escape and a mixed escape/literal default still decode")
+  func bmpAndMixedEscapes() throws {
+    #expect(
+      try inliner.inline(document: #"query Q($s: String = "\u3042x") { f(s: $s) }"#, variables: [:])
+        == "query Q { f(s: \"\u{3042}x\") }"
+    )
+    #expect(
+      try inliner.inline(document: #"query Q($s: String = "a\uD83D\uDE00b") { f(s: $s) }"#, variables: [:])
+        == "query Q { f(s: \"a\u{1F600}b\") }"
+    )
+  }
+
+  @Test(
+    "an unpaired or malformed surrogate escape is rejected",
+    arguments: [
+      #""\uD83D""#,
+      #""\uD83Dx""#,
+      #""\uD83DA""#,
+      #""\uDE00""#,
+      #""\uZZZZ""#
+    ]
+  )
+  func malformedSurrogateEscapes(_ literal: String) {
+    #expect(throws: GatewaySDKError.self) {
+      _ = try inliner.inline(
+        document: "query Q($s: String = \(literal)) { f(s: $s) }",
+        variables: [:]
+      )
+    }
+  }
+
   // MARK: - Byte preservation
 
   @Test("dollar-looking text inside strings, block strings and comments is untouched")
