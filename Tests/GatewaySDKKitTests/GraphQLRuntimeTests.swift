@@ -266,13 +266,24 @@ struct GraphQLRuntimeTests {
     let recorder = CallRecorder()
     let runtime = try makeRuntime(recorder: recorder)
     let documents = [
-      #"query($id: ID, $id: ID) { labels(accountId: $id) { name } }"#,
-      #"{ labels(accountId: "a", accountId: "b") { name } }"#,
-      #"{ threads(input: {accountId: "a"}) { edges { node(unused: 1) { id } } } }"#
+      (
+        #"query($id: ID, $id: ID) { labels(accountId: $id) { name } }"#,
+        "syntax error at 1:16: duplicate variable declaration 'id'"
+      ),
+      (
+        #"{ labels(accountId: "a", accountId: "b") { name } }"#,
+        "syntax error at 1:26: duplicate argument 'accountId'"
+      ),
+      (
+        #"{ threads(input: {accountId: "a"}) { edges { node(unused: 1, unused: 2) { id } } } }"#,
+        "syntax error at 1:62: duplicate argument 'unused'"
+      )
     ]
-    for document in documents {
+    for (document, message) in documents {
       let envelope = await runtime.execute(document: document, context: .init())
       #expect(envelope.exitCode == 2)
+      #expect(envelope.data == nil)
+      #expect(envelope.errors == [.init(message: message, code: "SYNTAX")])
       #expect(await recorder.snapshot().0 == 0)
     }
   }

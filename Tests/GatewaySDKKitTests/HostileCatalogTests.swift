@@ -14,8 +14,8 @@ import Testing
 /// name-keyed lookup added anywhere is exercised by it automatically.
 @Suite("Hostile catalog")
 struct HostileCatalogTests {
-  /// Duplicates in every position the model allows: operation arguments, command flags,
-  /// object fields, object-field arguments, input-object fields, and enum values.
+  /// Duplicates in every position the model allows: operation names and arguments,
+  /// command flags, object fields, object-field arguments, input-object fields, and enum values.
   static let duplicated = GatewaySchemaCatalog(
     provider: "hostile",
     tier: "reader",
@@ -28,6 +28,13 @@ struct HostileCatalogTests {
           GatewayArgument(name: "arg", type: .named("Int")),
           GatewayArgument(name: "arg", type: .named("Int"))
         ],
+        result: .named("DupObject")
+      ),
+      GatewayOperation(
+        name: "dup",
+        kind: .query,
+        tier: "reader",
+        arguments: [GatewayArgument(name: "ignoredSecondDefinition", type: .named("String"))],
         result: .named("DupObject")
       ),
       GatewayOperation(
@@ -176,6 +183,9 @@ struct HostileCatalogTests {
       GatewaySchemaProblem(path: "operation.dup.arguments.arg", message: "duplicate argument name 'arg'")
     ))
     #expect(duplicates.contains(
+      GatewaySchemaProblem(path: "operation.dup", message: "duplicate operation name 'dup'")
+    ))
+    #expect(duplicates.contains(
       GatewaySchemaProblem(path: "operation.dup cmd.arguments.flag", message: "duplicate argument name 'flag'")
     ))
     #expect(duplicates.contains(
@@ -193,7 +203,7 @@ struct HostileCatalogTests {
     #expect(duplicates.contains(
       GatewaySchemaProblem(path: "type.DupEnum.values.SAME", message: "duplicate enum value name 'SAME'")
     ))
-    #expect(duplicates.count == 6)
+    #expect(duplicates.count == 7)
   }
 
   @Test("a clean catalog reports no duplicate problems")
@@ -205,6 +215,17 @@ struct HostileCatalogTests {
 
   @Test("the GraphQL runtime survives duplicated catalog names")
   func runtimeDoesNotTrap() async throws {
+    let document = try GatewayGraphQLParser.parse("{ dup(arg: 1) { field } }")
+    let validated = try GatewayGraphQLValidator(catalog: Self.duplicated).validate(document)
+    #expect(validated.rootFields == [
+      .init(
+        responseKey: "dup",
+        name: "dup",
+        arguments: ["arg": .int(1)],
+        selectionSet: [.init(name: "field")],
+        operation: Self.duplicated.operations[0]
+      )
+    ])
     let runtime = try GatewayGraphQLRuntime(
       catalog: Self.duplicated,
       resolvers: [
@@ -212,6 +233,9 @@ struct HostileCatalogTests {
         "takesInput": { _, _ in .object(["field": .int(1)]) }
       ]
     )
+    let duplicateOperationEnvelope = await runtime.execute(document: "{ dup(arg: 1) { field } }", context: .init())
+    #expect(duplicateOperationEnvelope.exitCode == 0)
+    #expect(duplicateOperationEnvelope.data == .object(["dup": .object(["field": .int(1)])]))
     let envelope = await runtime.execute(document: "{ takesInput(input: {member: 1}) { field } }", context: .init())
     #expect(envelope.exitCode == 0)
     #expect(envelope.data == .object(["takesInput": .object(["field": .int(1)])]))

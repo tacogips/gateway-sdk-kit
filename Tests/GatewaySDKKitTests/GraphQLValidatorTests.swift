@@ -33,6 +33,52 @@ struct GraphQLValidatorTests {
     #expect(validated.rootFields[0].arguments == ["input": .object(["accountId": .string("a1"), "direction": .string("INBOUND"), "limit": .int(25)])])
   }
 
+  @Test("directly materializes variable and recursive defaults while retaining argument absence and root order")
+  func directDefaultAndOrderContracts() throws {
+    var catalog = FixtureCatalogs.runtime
+    catalog.operations += [
+      .init(name: "requires", kind: .query, tier: "reader", arguments: [.init(name: "required", type: .nonNull(.named("String")))], result: .named("Label")),
+      .init(name: "withVariable", kind: .query, tier: "reader", arguments: [.init(name: "value", type: .named("String"))], result: .named("Label")),
+      .init(name: "withDefaults", kind: .query, tier: "reader", arguments: [
+        .init(name: "payload", type: .named("Payload"), defaultValue: .object(["rows": .array([.object([:])])]))
+      ], result: .named("Label")),
+      .init(name: "optional", kind: .query, tier: "reader", arguments: [.init(name: "value", type: .named("String"))], result: .named("Label"))
+    ]
+    catalog.types += [
+      .init(name: "Payload", kind: .inputObject([.init(name: "rows", type: .list(.named("Row")))])),
+      .init(name: "Row", kind: .inputObject([.init(name: "limit", type: .named("Int"), defaultValue: .int(25))]))
+    ]
+    let local = GatewayGraphQLValidator(catalog: catalog)
+
+    let variableDefault = try GatewayGraphQLParser.parse(#"query($value: String = "variable-default") { withVariable(value: $value) { name } }"#)
+    #expect(try local.validate(variableDefault).rootFields[0].arguments == ["value": .string("variable-default")])
+
+    let recursiveDefaults = try GatewayGraphQLParser.parse("{ withDefaults { name } }")
+    #expect(try local.validate(recursiveDefaults).rootFields[0].arguments == [
+      "payload": .object(["rows": .array([.object(["limit": .int(25)])])])
+    ])
+
+    let omittedOptional = try GatewayGraphQLParser.parse("{ optional { name } }")
+    #expect(try local.validate(omittedOptional).rootFields[0].arguments == [:])
+
+    let ordered = try GatewayGraphQLParser.parse(#"{ second: labels(accountId: "a") { name } first: threads(input: {accountId: "a"}) { totalCount } }"#)
+    #expect(try local.validate(ordered).rootFields.map(\.responseKey) == ["second", "first"])
+
+    let explicitNull = try GatewayGraphQLParser.parse("{ requires(required: null) { name } }")
+    do {
+      _ = try local.validate(explicitNull)
+      Issue.record("expected explicit null argument failure")
+    } catch let error as GatewaySDKError {
+      guard case .validation(let code, let message, let path) = error else {
+        Issue.record("expected validation error")
+        return
+      }
+      #expect(code == "ARGUMENT_TYPE")
+      #expect(message == "argument 'required' does not match String!")
+      #expect(path == ["requires"])
+    }
+  }
+
   @Test("reports each stable validation code")
   func stableCodes() throws {
     let cases = [
