@@ -152,12 +152,29 @@ public struct GraphQLVariableInliner {
 ### 7. SDK protocol and envelope
 
 `GatewayEnvelope`, `GatewayEnvelopeError { message, code: String?, path: [String]? }`,
-and `protocol GatewaySDK` exactly as master §2.5 with default implementations for
-`catalog`, `invoke`, `schemaSDL`, `searchSchema`. `GatewayEnvelope` gets
+and this protocol (NOTE: no associated type, no static requirement; the master design's
+section 2.5 has been amended to match):
+
+```swift
+public protocol GatewaySDK: Sendable {
+  var provider: String { get }
+  var tier: String { get }
+  var catalog: GatewaySchemaCatalog { get }
+  func execute(document: String, variables: [String: GatewayJSONValue], environment: [String: String]) async -> GatewayEnvelope
+  func invoke(_ request: GatewayOperationRequest, environment: [String: String]) async -> GatewayEnvelope
+  func schemaSDL() -> String
+  func searchSchema(_ pattern: String, options: GatewaySchemaSearch.Options) throws -> [GatewaySchemaSearch.Match]
+}
+```
+
+Default implementations for `invoke` (build via `GatewayDocumentBuilder`, or for a
+`command` operation via `GatewayArgvBuilder` with the argv JSON-encoded into `document`,
+then `execute`; builder errors become an envelope with one error, exit code 2),
+`schemaSDL`, and `searchSchema`. `GatewayEnvelope` gets
 `init(parsingCLIOutput stdout: String, exitCode: Int32)` that understands the two
 envelope shapes the gateways print today: `{data, errors: [{message,...}], extensions:
 {requestId}}` and `{ok: Bool, data, error: {code, message}}`; unparsable output becomes
-one error with the raw text.
+one error with the raw text. Also `static func failure(_ error: Error, exitCode: Int32) -> GatewayEnvelope`.
 
 ## Tests (swift-testing)
 
