@@ -479,14 +479,14 @@ gate evidence.
 | 1 | complete | `Sources/GatewaySDKKit/GatewaySDKError.swift` | `mise run build` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 2 | complete | `Sources/GatewaySDKKit/GraphQL/GatewayGraphQLDocument.swift` | `mise run build` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 3 | complete | parser, limits, lexer; corrective parser surrogate decoder | `mise run build`; full corrective gate passed (185 tests) | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
-| 4 | complete | parser and lexer tests; supported grammar/literal forms, exact syntax messages/cases/positions, nested duplicate argument position, direct lexer failure details, and document/token/depth/selection/root/container/node below-at-over boundaries | focused lexer suite and post-change full gate passed (208 tests, SwiftLint 0) | none | none | `b34a198`, `56d3ac4`, `7ca7990` |
+| 4 | complete | parser and lexer tests; supported grammar/literal forms, exact named escapes/block-string dedentation, exact syntax messages/cases/positions, nested duplicate argument position, direct lexer failure details, and document/token/depth/selection/root/container/node below-at-over boundaries | focused parser/lexer suites and post-change full gate passed (209 tests, SwiftLint 0) | none | none | `b34a198`, `56d3ac4`, `7ca7990`, `e521a93` |
 | 5 | complete | validator; corrective nested-input, enum-literal, type-depth, current-request defaults, and request-scoped node accounting without rescanning supplied/literal values | `swift test --filter GraphQLValidatorTests` and `mise run lint` passed | none | none | `5f6267f`, `72f4032`, `b34a198`, `12b2496` |
-| 6 | complete | validator tests; 12 condition-specific stable-code passing cases, complete `UNKNOWN_VARIABLE` message/path assertion, wrapper-strip matrix, and exact direct-AST/supplied-value depth/selection/root/container/node boundaries | focused validator suite and post-change full gate passed (208 tests, SwiftLint 0) | none | none | `b34a198`, `12b2496`, `2d6a546`, `7913037`, `6a2dec9`, `599b240`, `c22dc27` |
+| 6 | complete | validator tests; 12 condition-specific stable-code passing cases, complete `UNKNOWN_VARIABLE` message/path assertion, wrapper-strip matrix, and exact direct-AST/supplied-value depth/selection/root/list-and-object-container/node boundaries | focused validator suite and post-change full gate passed (209 tests, SwiftLint 0) | none | none | `b34a198`, `12b2496`, `2d6a546`, `7913037`, `6a2dec9`, `599b240`, `c22dc27`, `e521a93` |
 | 7 | complete | runtime and projection; corrective private projection result and response paths | `mise run build`; full corrective gate passed | none | none | `7dd1adb89d8228d890a9a33ec7692b8981f613c0` |
-| 8 | complete | runtime fixture/tests and hostile catalog test; deterministic concurrency, authorization, complete missing-key/scalar-object projection, mutation recorder, exact initializer failures, and every request-resource envelope with designed code and path | focused runtime suite and post-change full gate passed (208 tests, SwiftLint 0) | none | none | `12b2496`, `2d6a546`, `7913037`, `6a2dec9`, `599b240`, `c22dc27`, `56d3ac4`, `7ca7990` |
+| 8 | complete | runtime fixture/tests and hostile catalog test; deterministic concurrency, authorization, complete missing-key/scalar-object projection, mutation recorder, resolver list-and-object container triples, exact initializer failures, and every request-resource envelope with designed code and path | focused runtime suite and post-change full gate passed (209 tests, SwiftLint 0) | none | none | `12b2496`, `2d6a546`, `7913037`, `6a2dec9`, `599b240`, `c22dc27`, `56d3ac4`, `7ca7990`, `e521a93` |
 | 9 | complete | deleted inliner/renderer/tests; `SDLPrinterTests.swift`, `HostileCatalogTests.swift`, comments | `mise run build && mise run test`; stale-reference search passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
 | 10 | complete | `README.md`, `AGENTS.md`, `Package.swift` | `mise run test` passed | none | none | `ebabb54c2d6de7c5410cca257f98319e00b082f4` |
-| 11 | complete | final-gate record | `arch -arm64 /bin/zsh -lc 'mise run build && mise run test && mise run lint'` passed (208 tests, SwiftLint 0); maximum 627 lines; stale-reference, diff, cached-diff, and clean-worktree checks passed | none | none | `8f400f7`, `7913037`, `b56c0ed`, `6a2dec9`, `34c3d60`, `599b240`, `c22dc27`, `56d3ac4`, `7ca7990` |
+| 11 | complete | final-gate record | `arch -arm64 /bin/zsh -lc 'mise run build && mise run test && mise run lint'` passed (209 tests, SwiftLint 0); maximum 652 lines; stale-reference, diff, cached-diff, and clean-worktree checks passed | none | none | `8f400f7`, `7913037`, `b56c0ed`, `6a2dec9`, `34c3d60`, `599b240`, `c22dc27`, `56d3ac4`, `7ca7990`, `e521a93` |
 
 Self-review correction (2026-09-04): the initial Task 4, 6, and 8 completion entries
 were not supported by their four focused tests. `comm-001058` required revision before
@@ -572,6 +572,18 @@ lexer failure as `.syntax` with exact message/line/column, checks initializer
 for every global or syntax request limit. Focused lexer/runtime suites and the fresh
 208-test final gate passed with zero SwiftLint violations. Tasks 4, 8, and 11 are
 complete.
+
+Test-integrity completion (2026-09-04): `comm-001085` found that object-container
+triples were absent for direct AST values, supplied variables, and resolver results,
+and that named string escapes and block-string dedentation lacked exact assertions.
+`e521a93` adds all below-limit, exact-limit, and one-over object cases: validator
+failures assert `RESOURCE_LIMIT`, exact messages and paths, while resolver failures
+assert `RESOLVER_SHAPE`, data nulling, exit status 1, selected response-key path, and
+one recorded resolver call. It also pins every named escape and the exact dedented
+block-string result. The post-change focused parser/validator/runtime suites and full
+gate passed with 209 tests and zero SwiftLint violations; the maximum Swift file length
+is 652, the stale-inliner search is empty, and diff/cached-diff and clean-worktree
+checks passed. Tasks 4, 6, 8, and 11 are complete.
 
 ## Completion criteria
 
