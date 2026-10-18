@@ -5,11 +5,30 @@ public struct GatewayEnvelopeError: Codable, Sendable, Equatable {
   public var message: String
   public var code: String?
   public var path: [String]?
+  public var diagnostics: GatewayErrorDiagnostics?
 
-  public init(message: String, code: String? = nil, path: [String]? = nil) {
+  public init(message: String, code: String? = nil, path: [String]? = nil, diagnostics: GatewayErrorDiagnostics? = nil) {
     self.message = message
     self.code = code
     self.path = path
+    self.diagnostics = diagnostics?.isEmpty == false ? diagnostics : nil
+  }
+  private enum CodingKeys: String, CodingKey { case message, code, path; case diagnostics = "extensions" }
+
+  public init(from decoder: any Decoder) throws {
+    let fields = try decoder.container(keyedBy: CodingKeys.self)
+    self.init(message: try fields.decode(String.self, forKey: .message),
+              code: try fields.decodeIfPresent(String.self, forKey: .code),
+              path: try fields.decodeIfPresent([String].self, forKey: .path),
+              diagnostics: try? fields.decode(GatewayErrorDiagnostics.self, forKey: .diagnostics))
+  }
+
+  public func encode(to encoder: any Encoder) throws {
+    var fields = encoder.container(keyedBy: CodingKeys.self)
+    try fields.encode(message, forKey: .message)
+    try fields.encodeIfPresent(code, forKey: .code)
+    try fields.encodeIfPresent(path, forKey: .path)
+    if let diagnostics, !diagnostics.isEmpty { try fields.encode(diagnostics, forKey: .diagnostics) }
   }
 }
 
@@ -80,7 +99,8 @@ public struct GatewayEnvelope: Codable, Sendable, Equatable {
         errors = [
           GatewayEnvelopeError(
             message: Self.string(error["message"]) ?? "unknown error",
-            code: Self.string(error["code"])
+            code: Self.string(error["code"]),
+            diagnostics: .init(jsonValue: error["extensions"])
           )
         ]
       } else if errorMember != nil {
@@ -150,7 +170,8 @@ public struct GatewayEnvelope: Codable, Sendable, Equatable {
     return GatewayEnvelopeError(
       message: string(entry["message"]) ?? "unknown error",
       code: code,
-      path: path
+      path: path,
+      diagnostics: .init(jsonValue: entry["extensions"])
     )
   }
 

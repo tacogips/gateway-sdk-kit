@@ -223,3 +223,10 @@ mise run build
 mise run test
 mise run lint
 ```
+
+Resolver errors may expose optional `GatewayErrorDiagnostics` containing only bounded
+`httpStatus` (100–599) and `providerErrorCode` (0–99999) integers. The runtime carries
+these directly to the matching error path and serializes them under that error's
+`extensions`. Existing conformers need no change; the default is `nil`. Unknown
+metadata and invalid numeric values are omitted, and CLI envelope parsing and
+Codable round trips preserve the typed diagnostics.

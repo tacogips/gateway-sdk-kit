@@ -13,6 +13,11 @@ public struct GatewayResolverContext: Sendable {
 public protocol GatewayResolverError: Error {
   var code: String { get }
   var message: String { get }
+  var diagnostics: GatewayErrorDiagnostics? { get }
+}
+
+public extension GatewayResolverError {
+  var diagnostics: GatewayErrorDiagnostics? { nil }
 }
 
 public struct GatewayGraphQLRuntime: Sendable {
@@ -116,7 +121,7 @@ public struct GatewayGraphQLRuntime: Sendable {
       case .failure(let error): return .init(key: root.responseKey, value: .null, error: error)
       }
     } catch let error as any GatewayResolverError {
-      return .init(key: root.responseKey, value: .null, error: .init(message: error.message, code: error.code, path: [root.responseKey]))
+      return .init(key: root.responseKey, value: .null, error: .init(message: error.message, code: error.code, path: [root.responseKey], diagnostics: error.diagnostics))
     } catch {
       return .init(key: root.responseKey, value: .null, error: .init(message: "resolver failed", code: "RESOLVER_ERROR", path: [root.responseKey]))
     }
@@ -127,6 +132,7 @@ public struct GatewayGraphQLRuntime: Sendable {
       var object: [String: GatewayJSONValue] = ["message": .string(error.message)]
       if let code = error.code { object["code"] = .string(code) }
       if let path = error.path { object["path"] = .array(path.map(GatewayJSONValue.string)) }
+      if let diagnostics = error.diagnostics, !diagnostics.isEmpty { object["extensions"] = diagnostics.jsonValue }
       return .object(object)
     }
     let raw = (try? GatewayJSONValue.object([
