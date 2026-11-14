@@ -1,0 +1,62 @@
+import Foundation
+
+/// Every error the kit throws, including structured GraphQL parse and validation errors.
+public enum GatewaySDKError: Error, Sendable, Equatable, CustomStringConvertible {
+  case unknownOperation(name: String)
+  case unknownVariable(operation: String, name: String)
+  case missingRequiredVariable(operation: String, name: String)
+  case invalidSelectionPath(path: String)
+  case commandOperationNeedsArgv(name: String)
+  case graphQLOperationNeedsDocument(name: String)
+  case invalidPattern(String)
+  case variableTypeMismatch(name: String, expected: String, actual: String)
+  case unusedVariable(operation: String, name: String)
+  case undeclaredVariable(name: String)
+  case malformedDocument(String)
+  case invalidTypeReference(String)
+  case invalidJSON(String)
+  case invalidJSONValue(String)
+  case emptySelection(operation: String, type: String)
+  case syntax(message: String, line: Int, column: Int)
+  case validation(code: String, message: String, path: [String])
+
+  public var description: String {
+    switch self {
+    case .unknownOperation(let name):
+      return "unknown operation '\(name)'"
+    case .unknownVariable(let operation, let name):
+      return "operation '\(operation)' has no variable '\(name)'"
+    case .missingRequiredVariable(let operation, let name):
+      return "operation '\(operation)' requires variable '\(name)'"
+    case .invalidSelectionPath(let path):
+      return "invalid selection path '\(path)'"
+    case .commandOperationNeedsArgv(let name):
+      return "operation '\(name)' is a command; build argv with GatewayArgvBuilder"
+    case .graphQLOperationNeedsDocument(let name):
+      return "operation '\(name)' is a GraphQL operation; build a document with GatewayDocumentBuilder"
+    case .invalidPattern(let message):
+      return "invalid search pattern: \(message)"
+    case .variableTypeMismatch(let name, let expected, let actual):
+      return "variable '\(name)' expects \(expected) but got \(actual)"
+    case .unusedVariable(let operation, let name):
+      return "operation '\(operation)' declares variable '\(name)' but never uses it"
+    case .undeclaredVariable(let name):
+      return "variable '\(name)' is used but not declared"
+    case .malformedDocument(let message):
+      return "malformed GraphQL document: \(message)"
+    case .invalidTypeReference(let text):
+      return "invalid type reference '\(text)'"
+    case .invalidJSON(let message):
+      return "invalid JSON: \(message)"
+    case .invalidJSONValue(let message):
+      return "invalid JSON value: \(message)"
+    case .emptySelection(let operation, let type):
+      return "operation '\(operation)' returns '\(type)', which yields no selectable fields"
+    case .syntax(let message, let line, let column):
+      return "syntax error at \(line):\(column): \(message)"
+    case .validation(let code, let message, let path):
+      let location = path.isEmpty ? "" : " at \(path.joined(separator: "."))"
+      return "\(code)\(location): \(message)"
+    }
+  }
+}
